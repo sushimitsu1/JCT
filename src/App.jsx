@@ -1,9 +1,17 @@
+import { AuthProvider, useAuth } from './context/AuthContext'
+import Login from './pages/Login'
+import Dashboard from './pages/Dashboard'
+
+function AppContent() {
+  const { user } = useAuth()
+  return user ? <Dashboard /> : <Login />
+}
+
 function App() {
   return (
-    <div>
-      <h1>Whatnot WMS</h1>
-      <p>Building something great.</p>
-    </div>
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   )
 }
 
