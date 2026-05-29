@@ -6,6 +6,8 @@ import {
   DollarSign, Users, BarChart3, LogOut
 } from 'lucide-react'
 import Clients from './Clients'
+import Receiving from './Receiving'
+import Inventory from './Inventory'
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', id: 'dashboard' },
@@ -58,6 +60,8 @@ export default function Dashboard() {
   const renderPage = () => {
     switch (activePage) {
       case 'dashboard': return <DashboardHome />
+      case 'receiving': return <Receiving />
+      case 'inventory': return <Inventory />
       case 'clients': return <Clients />
       default: return <ComingSoon label={navItems.find(n => n.id === activePage)?.label} />
     }
