@@ -5,7 +5,7 @@ import { collection, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
 import {
   LayoutDashboard, Package, PackagePlus, ShoppingCart,
-  DollarSign, Users, BarChart3, LogOut
+  DollarSign, Users, BarChart3, LogOut, KeyRound
 } from 'lucide-react'
 import Clients from './Clients'
 import Receiving from './Receiving'
@@ -13,6 +13,7 @@ import Inventory from './Inventory'
 import Billing from './Billing'
 import Orders from './Orders'
 import Reports from './Reports'
+import ClientAccounts from './ClientAccounts'
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', id: 'dashboard' },
@@ -21,13 +22,12 @@ const navItems = [
   { icon: ShoppingCart, label: 'Orders', id: 'orders' },
   { icon: DollarSign, label: 'Billing', id: 'billing' },
   { icon: Users, label: 'Clients', id: 'clients' },
+  { icon: KeyRound, label: 'Client Accounts', id: 'accounts' },
   { icon: BarChart3, label: 'Reports', id: 'reports' },
 ]
 
 function DashboardHome() {
-  const [stats, setStats] = useState({
-    clients: 0, skus: 0, openOrders: 0, revenue: 0
-  })
+  const [stats, setStats] = useState({ clients: 0, skus: 0, openOrders: 0, revenue: 0 })
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -41,12 +41,7 @@ function DashboardHome() {
         d.data().status !== 'shipped' && d.data().status !== 'cancelled'
       ).length
       const revenue = invoices.docs.reduce((sum, d) => sum + Number(d.data().total || 0), 0)
-      setStats({
-        clients: clients.size,
-        skus: inventory.size,
-        openOrders,
-        revenue
-      })
+      setStats({ clients: clients.size, skus: inventory.size, openOrders, revenue })
     }
     fetchStats()
   }, [])
@@ -56,7 +51,7 @@ function DashboardHome() {
       <div className="grid grid-cols-4 gap-4 mb-6">
         {[
           { label: 'Total Clients', value: stats.clients },
-          { label: 'Active SKUs', value: stats.skus },
+          { label: 'Active Pallets', value: stats.skus },
           { label: 'Open Orders', value: stats.openOrders },
           { label: 'Total Revenue', value: `$${stats.revenue.toLocaleString()}` },
         ].map((card) => (
@@ -86,6 +81,7 @@ export default function Dashboard() {
       case 'orders': return <Orders />
       case 'billing': return <Billing />
       case 'clients': return <Clients />
+      case 'accounts': return <ClientAccounts />
       case 'reports': return <Reports />
       default: return null
     }

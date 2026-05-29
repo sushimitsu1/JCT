@@ -1,14 +1,19 @@
 import { useState, useEffect } from 'react'
-import { collection, getDocs, addDoc, query, orderBy } from 'firebase/firestore'
+import { collection, getDocs, addDoc, updateDoc, doc, query, orderBy } from 'firebase/firestore'
 import { db } from '../firebase'
-import { DollarSign, FileText, Plus, X, Download } from 'lucide-react'
-import { format } from 'date-fns'
+import { DollarSign, FileText, Plus, X, Download, CheckCircle } from 'lucide-react'
 import * as XLSX from 'xlsx'
+import jsPDF from 'jspdf'
 
 const months = [
   'January','February','March','April','May','June',
   'July','August','September','October','November','December'
 ]
+
+const generateInvoiceNumber = () => {
+  const now = new Date()
+  return `INV-${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}-${Math.floor(Math.random()*9000)+1000}`
+}
 
 export default function Billing() {
   const [invoices, setInvoices] = useState([])
@@ -39,19 +44,17 @@ export default function Billing() {
     setSelectedClient(clientId)
     const client = clients.find(c => c.id === clientId)
     if (!client) return
-
-    // Auto-calculate storage fees from inventory
-    const clientInventory = inventory.filter(i => i.clientId === clientId)
-    const totalUnits = clientInventory.reduce((sum, i) => sum + Number(i.quantity || 0), 0)
-    const pallets = Math.ceil(totalUnits / 50) // assume 50 units per pallet
+    const clientInventory = inventory.filter(i =>
+      i.clientId === clientId && (i.status || 'available') === 'available'
+    )
+    const pallets = clientInventory.length
     const rate = Number(client.billingRate || 25)
-
-    const autoItems = [
+    setLineItems([
       {
         description: `Storage fee — ${months[selectedMonth]} ${selectedYear}`,
         quantity: pallets,
         unit: 'pallets',
-        rate: rate,
+        rate,
         amount: pallets * rate
       },
       {
@@ -61,8 +64,7 @@ export default function Billing() {
         rate: 0,
         amount: 0
       }
-    ]
-    setLineItems(autoItems)
+    ])
   }
 
   const updateLineItem = (i, field, value) => {
@@ -71,15 +73,12 @@ export default function Billing() {
     if (field === 'quantity' || field === 'rate') {
       items[i].amount = Number(items[i].quantity || 0) * Number(items[i].rate || 0)
     }
-    if (field === 'amount') {
-      items[i].amount = Number(value)
-    }
+    if (field === 'amount') items[i].amount = Number(value)
     setLineItems(items)
   }
 
   const addLineItem = () => setLineItems([...lineItems, { description: '', quantity: 1, unit: '', rate: 0, amount: 0 }])
   const removeLineItem = (i) => setLineItems(lineItems.filter((_, idx) => idx !== i))
-
   const total = lineItems.reduce((sum, i) => sum + Number(i.amount || 0), 0)
 
   const handleSave = async () => {
@@ -88,8 +87,11 @@ export default function Billing() {
     const client = clients.find(c => c.id === selectedClient)
     try {
       await addDoc(collection(db, 'invoices'), {
+        invoiceNumber: generateInvoiceNumber(),
         clientId: selectedClient,
         clientName: client?.companyName,
+        clientEmail: client?.email || '',
+        clientPhone: client?.phone || '',
         month: selectedMonth,
         year: selectedYear,
         period: `${months[selectedMonth]} ${selectedYear}`,
@@ -108,7 +110,136 @@ export default function Billing() {
     setLoading(false)
   }
 
-  const exportToExcel = (invoice) => {
+  const markAsPaid = async (e, id) => {
+    e.stopPropagation()
+    await updateDoc(doc(db, 'invoices', id), {
+      status: 'paid',
+      paidAt: new Date().toISOString()
+    })
+    fetchData()
+  }
+
+  const exportPDF = (invoice) => {
+    const pdf = new jsPDF()
+    const pageWidth = pdf.internal.pageSize.getWidth()
+
+    // Header background
+    pdf.setFillColor(17, 24, 39)
+    pdf.rect(0, 0, pageWidth, 45, 'F')
+
+    // Company name
+    pdf.setTextColor(255, 255, 255)
+    pdf.setFontSize(20)
+    pdf.setFont('helvetica', 'bold')
+    pdf.text('JCT Logistics', 14, 20)
+
+    pdf.setFontSize(9)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setTextColor(156, 163, 175)
+    pdf.text('Warehouse Management & 3PL Services', 14, 28)
+    pdf.text('Ontario, California', 14, 35)
+
+    // Invoice label
+    pdf.setTextColor(255, 255, 255)
+    pdf.setFontSize(22)
+    pdf.setFont('helvetica', 'bold')
+    pdf.text('INVOICE', pageWidth - 14, 20, { align: 'right' })
+
+    pdf.setFontSize(9)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setTextColor(156, 163, 175)
+    pdf.text(invoice.invoiceNumber || '', pageWidth - 14, 28, { align: 'right' })
+    pdf.text(`Period: ${invoice.period}`, pageWidth - 14, 35, { align: 'right' })
+
+    // Bill To
+    pdf.setTextColor(17, 24, 39)
+    pdf.setFontSize(9)
+    pdf.setFont('helvetica', 'bold')
+    pdf.text('BILL TO', 14, 58)
+
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(11)
+    pdf.setTextColor(17, 24, 39)
+    pdf.text(invoice.clientName || '', 14, 66)
+
+    pdf.setFontSize(9)
+    pdf.setTextColor(75, 85, 99)
+    if (invoice.clientEmail) pdf.text(invoice.clientEmail, 14, 73)
+    if (invoice.clientPhone) pdf.text(invoice.clientPhone, 14, 79)
+
+    // Invoice details box
+    pdf.setFillColor(249, 250, 251)
+    pdf.roundedRect(pageWidth - 80, 52, 66, 32, 2, 2, 'F')
+    pdf.setFontSize(8)
+    pdf.setTextColor(107, 114, 128)
+    pdf.text('Invoice Date', pageWidth - 76, 60)
+    pdf.text('Status', pageWidth - 76, 70)
+    pdf.text('Due Date', pageWidth - 76, 80)
+    pdf.setTextColor(17, 24, 39)
+    pdf.setFont('helvetica', 'bold')
+    pdf.text(new Date().toLocaleDateString(), pageWidth - 30, 60, { align: 'right' })
+    pdf.text(invoice.status?.toUpperCase() || 'PENDING', pageWidth - 30, 70, { align: 'right' })
+    pdf.text('Upon Receipt', pageWidth - 30, 80, { align: 'right' })
+
+    // Line items table - built manually without autotable
+    let y = 96
+    pdf.setFillColor(17, 24, 39)
+    pdf.rect(14, y, pageWidth - 28, 8, 'F')
+    pdf.setTextColor(255, 255, 255)
+    pdf.setFontSize(8)
+    pdf.setFont('helvetica', 'bold')
+    pdf.text('Description', 17, y + 5.5)
+    pdf.text('Qty', 110, y + 5.5)
+    pdf.text('Unit', 125, y + 5.5)
+    pdf.text('Rate', 145, y + 5.5)
+    pdf.text('Amount', pageWidth - 17, y + 5.5, { align: 'right' })
+
+    y += 8
+    invoice.lineItems?.forEach((item, i) => {
+      if (i % 2 === 0) {
+        pdf.setFillColor(249, 250, 251)
+        pdf.rect(14, y, pageWidth - 28, 8, 'F')
+      }
+      pdf.setTextColor(55, 65, 81)
+      pdf.setFont('helvetica', 'normal')
+      pdf.setFontSize(8)
+      pdf.text(String(item.description || ''), 17, y + 5.5)
+      pdf.text(String(item.quantity || ''), 110, y + 5.5)
+      pdf.text(String(item.unit || ''), 125, y + 5.5)
+      pdf.text(`$${Number(item.rate).toFixed(2)}`, 145, y + 5.5)
+      pdf.text(`$${Number(item.amount).toFixed(2)}`, pageWidth - 17, y + 5.5, { align: 'right' })
+      y += 8
+    })
+
+    // Total box
+    y += 6
+    pdf.setFillColor(17, 24, 39)
+    pdf.roundedRect(pageWidth - 80, y, 66, 18, 2, 2, 'F')
+    pdf.setTextColor(156, 163, 175)
+    pdf.setFontSize(8)
+    pdf.setFont('helvetica', 'normal')
+    pdf.text('TOTAL DUE', pageWidth - 76, y + 7)
+    pdf.setTextColor(255, 255, 255)
+    pdf.setFontSize(13)
+    pdf.setFont('helvetica', 'bold')
+    pdf.text(
+      `$${Number(invoice.total).toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+      pageWidth - 16, y + 12, { align: 'right' }
+    )
+
+    // Footer
+    const footerY = pdf.internal.pageSize.getHeight() - 16
+    pdf.setDrawColor(229, 231, 235)
+    pdf.line(14, footerY - 4, pageWidth - 14, footerY - 4)
+    pdf.setFontSize(8)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setTextColor(156, 163, 175)
+    pdf.text('Thank you for your business.', pageWidth / 2, footerY, { align: 'center' })
+
+    pdf.save(`${invoice.invoiceNumber || 'Invoice'}_${invoice.clientName}_${invoice.period}.pdf`)
+  }
+
+  const exportExcel = (invoice) => {
     const rows = invoice.lineItems.map(item => ({
       Description: item.description,
       Quantity: item.quantity,
@@ -120,15 +251,15 @@ export default function Billing() {
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Invoice')
-    XLSX.writeFile(wb, `Invoice_${invoice.clientName}_${invoice.period}.xlsx`)
+    XLSX.writeFile(wb, `${invoice.invoiceNumber}_${invoice.clientName}_${invoice.period}.xlsx`)
   }
 
   const totalRevenue = invoices.reduce((sum, inv) => sum + Number(inv.total || 0), 0)
   const pendingCount = invoices.filter(i => i.status === 'pending').length
+  const paidCount = invoices.filter(i => i.status === 'paid').length
 
   return (
     <div className="p-6">
-      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-xl font-semibold text-white">Billing</h2>
@@ -143,15 +274,18 @@ export default function Billing() {
         </button>
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-4 gap-4 mb-6">
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
           <p className="text-xs text-gray-500 mb-1">Total Invoiced</p>
           <p className="text-2xl font-semibold text-white">${totalRevenue.toLocaleString()}</p>
         </div>
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-          <p className="text-xs text-gray-500 mb-1">Pending Invoices</p>
+          <p className="text-xs text-gray-500 mb-1">Pending</p>
           <p className="text-2xl font-semibold text-yellow-400">{pendingCount}</p>
+        </div>
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+          <p className="text-xs text-gray-500 mb-1">Paid</p>
+          <p className="text-2xl font-semibold text-green-400">{paidCount}</p>
         </div>
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
           <p className="text-xs text-gray-500 mb-1">Active Clients</p>
@@ -159,7 +293,6 @@ export default function Billing() {
         </div>
       </div>
 
-      {/* Invoices list */}
       <div className="space-y-3">
         {invoices.length === 0 ? (
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center">
@@ -179,7 +312,9 @@ export default function Billing() {
                   </div>
                   <div>
                     <p className="text-white font-medium text-sm">{inv.clientName}</p>
-                    <p className="text-gray-500 text-xs mt-0.5">{inv.period}</p>
+                    <p className="text-gray-500 text-xs mt-0.5">
+                      {inv.invoiceNumber ? `${inv.invoiceNumber} · ` : ''}{inv.period}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -191,10 +326,25 @@ export default function Billing() {
                     {inv.status}
                   </span>
                   <p className="text-white font-semibold text-sm">${Number(inv.total).toLocaleString()}</p>
+                  {inv.status === 'pending' && (
+                    <button
+                      onClick={e => markAsPaid(e, inv.id)}
+                      className="text-xs bg-green-600/20 hover:bg-green-600/40 text-green-400 px-2 py-1 rounded transition-colors flex items-center gap-1"
+                    >
+                      <CheckCircle size={11} /> Mark Paid
+                    </button>
+                  )}
                   <button
-                    onClick={e => { e.stopPropagation(); exportToExcel(inv) }}
+                    onClick={e => { e.stopPropagation(); exportPDF(inv) }}
+                    className="text-gray-400 hover:text-red-400 transition-colors p-1"
+                    title="Export PDF"
+                  >
+                    <FileText size={15} />
+                  </button>
+                  <button
+                    onClick={e => { e.stopPropagation(); exportExcel(inv) }}
                     className="text-gray-400 hover:text-green-400 transition-colors p-1"
-                    title="Export to Excel"
+                    title="Export Excel"
                   >
                     <Download size={15} />
                   </button>
@@ -231,6 +381,9 @@ export default function Billing() {
                       </tr>
                     </tfoot>
                   </table>
+                  {inv.paidAt && (
+                    <p className="text-green-400 text-xs mt-3">Paid on {new Date(inv.paidAt).toLocaleDateString()}</p>
+                  )}
                 </div>
               )}
             </div>
@@ -238,7 +391,6 @@ export default function Billing() {
         )}
       </div>
 
-      {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/60 flex items-start justify-center z-50 px-4 py-8 overflow-y-auto">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-2xl">
@@ -250,9 +402,8 @@ export default function Billing() {
             </div>
 
             <div className="px-6 py-4 space-y-4">
-              {/* Client + Period */}
               <div className="grid grid-cols-3 gap-4">
-                <div className="col-span-3 sm:col-span-1">
+                <div>
                   <label className="text-gray-400 text-xs mb-1 block">Client *</label>
                   <select
                     value={selectedClient}
@@ -286,7 +437,6 @@ export default function Billing() {
                 </div>
               </div>
 
-              {/* Line items */}
               {lineItems.length > 0 && (
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -338,7 +488,7 @@ export default function Billing() {
               )}
 
               {!selectedClient && (
-                <p className="text-gray-500 text-sm text-center py-4">Select a client to auto-generate line items from their inventory</p>
+                <p className="text-gray-500 text-sm text-center py-4">Select a client to auto-generate line items</p>
               )}
             </div>
 
