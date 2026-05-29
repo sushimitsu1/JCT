@@ -4,6 +4,7 @@ import { db } from '../firebase'
 import { DollarSign, FileText, Plus, X, Download, CheckCircle } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
+import { sendInvoiceEmail } from '../email'
 
 const months = [
   'January','February','March','April','May','June',
@@ -26,6 +27,7 @@ export default function Billing() {
   const [lineItems, setLineItems] = useState([])
   const [loading, setLoading] = useState(false)
   const [expandedId, setExpandedId] = useState(null)
+  const [success, setSuccess] = useState('')
 
   const fetchData = async () => {
     const [invSnap, clientsSnap, invoicesSnap] = await Promise.all([
@@ -84,10 +86,12 @@ export default function Billing() {
   const handleSave = async () => {
     if (!selectedClient) return
     setLoading(true)
+    setSuccess('')
     const client = clients.find(c => c.id === selectedClient)
+    const invoiceNumber = generateInvoiceNumber()
     try {
-      await addDoc(collection(db, 'invoices'), {
-        invoiceNumber: generateInvoiceNumber(),
+      const invoiceData = {
+        invoiceNumber,
         clientId: selectedClient,
         clientName: client?.companyName,
         clientEmail: client?.email || '',
@@ -99,7 +103,20 @@ export default function Billing() {
         total,
         status: 'pending',
         createdAt: new Date().toISOString()
-      })
+      }
+      await addDoc(collection(db, 'invoices'), invoiceData)
+
+      // Send email if client has email
+      if (client?.email) {
+        const sent = await sendInvoiceEmail(invoiceData)
+        setSuccess(sent
+          ? `Invoice saved and emailed to ${client.email}`
+          : 'Invoice saved — email could not be sent'
+        )
+      } else {
+        setSuccess('Invoice saved — no email on file for this client')
+      }
+
       setShowModal(false)
       setSelectedClient('')
       setLineItems([])
@@ -123,11 +140,9 @@ export default function Billing() {
     const pdf = new jsPDF()
     const pageWidth = pdf.internal.pageSize.getWidth()
 
-    // Header background
     pdf.setFillColor(17, 24, 39)
     pdf.rect(0, 0, pageWidth, 45, 'F')
 
-    // Company name
     pdf.setTextColor(255, 255, 255)
     pdf.setFontSize(20)
     pdf.setFont('helvetica', 'bold')
@@ -139,7 +154,6 @@ export default function Billing() {
     pdf.text('Warehouse Management & 3PL Services', 14, 28)
     pdf.text('Ontario, California', 14, 35)
 
-    // Invoice label
     pdf.setTextColor(255, 255, 255)
     pdf.setFontSize(22)
     pdf.setFont('helvetica', 'bold')
@@ -151,7 +165,6 @@ export default function Billing() {
     pdf.text(invoice.invoiceNumber || '', pageWidth - 14, 28, { align: 'right' })
     pdf.text(`Period: ${invoice.period}`, pageWidth - 14, 35, { align: 'right' })
 
-    // Bill To
     pdf.setTextColor(17, 24, 39)
     pdf.setFontSize(9)
     pdf.setFont('helvetica', 'bold')
@@ -167,7 +180,6 @@ export default function Billing() {
     if (invoice.clientEmail) pdf.text(invoice.clientEmail, 14, 73)
     if (invoice.clientPhone) pdf.text(invoice.clientPhone, 14, 79)
 
-    // Invoice details box
     pdf.setFillColor(249, 250, 251)
     pdf.roundedRect(pageWidth - 80, 52, 66, 32, 2, 2, 'F')
     pdf.setFontSize(8)
@@ -181,7 +193,6 @@ export default function Billing() {
     pdf.text(invoice.status?.toUpperCase() || 'PENDING', pageWidth - 30, 70, { align: 'right' })
     pdf.text('Upon Receipt', pageWidth - 30, 80, { align: 'right' })
 
-    // Line items table - built manually without autotable
     let y = 96
     pdf.setFillColor(17, 24, 39)
     pdf.rect(14, y, pageWidth - 28, 8, 'F')
@@ -211,7 +222,6 @@ export default function Billing() {
       y += 8
     })
 
-    // Total box
     y += 6
     pdf.setFillColor(17, 24, 39)
     pdf.roundedRect(pageWidth - 80, y, 66, 18, 2, 2, 'F')
@@ -227,7 +237,6 @@ export default function Billing() {
       pageWidth - 16, y + 12, { align: 'right' }
     )
 
-    // Footer
     const footerY = pdf.internal.pageSize.getHeight() - 16
     pdf.setDrawColor(229, 231, 235)
     pdf.line(14, footerY - 4, pageWidth - 14, footerY - 4)
@@ -266,13 +275,20 @@ export default function Billing() {
           <p className="text-sm text-gray-500 mt-0.5">{invoices.length} invoices · {pendingCount} pending</p>
         </div>
         <button
-          onClick={() => { setShowModal(true); setSelectedClient(''); setLineItems([]) }}
+          onClick={() => { setShowModal(true); setSelectedClient(''); setLineItems([]); setSuccess('') }}
           className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
         >
           <Plus size={16} />
           New Invoice
         </button>
       </div>
+
+      {success && (
+        <div className="bg-green-500/10 border border-green-500/20 text-green-400 text-sm rounded-lg px-4 py-3 mb-4 flex items-center gap-2">
+          <CheckCircle size={16} />
+          {success}
+        </div>
+      )}
 
       <div className="grid grid-cols-4 gap-4 mb-6">
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
@@ -400,7 +416,6 @@ export default function Billing() {
                 <X size={18} />
               </button>
             </div>
-
             <div className="px-6 py-4 space-y-4">
               <div className="grid grid-cols-3 gap-4">
                 <div>
@@ -436,7 +451,6 @@ export default function Billing() {
                   />
                 </div>
               </div>
-
               {lineItems.length > 0 && (
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -486,12 +500,10 @@ export default function Billing() {
                   </div>
                 </div>
               )}
-
               {!selectedClient && (
                 <p className="text-gray-500 text-sm text-center py-4">Select a client to auto-generate line items</p>
               )}
             </div>
-
             <div className="px-6 py-4 border-t border-gray-800 flex justify-end gap-3">
               <button onClick={() => setShowModal(false)} className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">
                 Cancel
@@ -501,7 +513,7 @@ export default function Billing() {
                 disabled={loading || !selectedClient || lineItems.length === 0}
                 className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-colors"
               >
-                {loading ? 'Saving...' : 'Save Invoice'}
+                {loading ? 'Saving...' : 'Save & Send Invoice'}
               </button>
             </div>
           </div>

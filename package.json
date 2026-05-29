@@ -13,6 +13,7 @@
     "deploy": "gh-pages -d dist"
   },
   "dependencies": {
+    "@emailjs/browser": "^4.4.1",
     "@tanstack/react-table": "^8.21.3",
     "date-fns": "^4.1.0",
     "firebase": "^11.6.1",
