@@ -8,6 +8,7 @@ import {
 import Clients from './Clients'
 import Receiving from './Receiving'
 import Inventory from './Inventory'
+import Billing from './Billing'
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', id: 'dashboard' },
@@ -62,6 +63,7 @@ export default function Dashboard() {
       case 'dashboard': return <DashboardHome />
       case 'receiving': return <Receiving />
       case 'inventory': return <Inventory />
+      case 'billing': return <Billing />
       case 'clients': return <Clients />
       default: return <ComingSoon label={navItems.find(n => n.id === activePage)?.label} />
     }
