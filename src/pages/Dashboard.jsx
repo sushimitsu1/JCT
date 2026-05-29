@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { signOut } from 'firebase/auth'
 import { auth } from '../firebase'
+import { collection, getDocs } from 'firebase/firestore'
+import { db } from '../firebase'
 import {
   LayoutDashboard, Package, PackagePlus, ShoppingCart,
   DollarSign, Users, BarChart3, LogOut
@@ -10,6 +12,7 @@ import Receiving from './Receiving'
 import Inventory from './Inventory'
 import Billing from './Billing'
 import Orders from './Orders'
+import Reports from './Reports'
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', id: 'dashboard' },
@@ -22,14 +25,40 @@ const navItems = [
 ]
 
 function DashboardHome() {
+  const [stats, setStats] = useState({
+    clients: 0, skus: 0, openOrders: 0, revenue: 0
+  })
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      const [clients, inventory, orders, invoices] = await Promise.all([
+        getDocs(collection(db, 'clients')),
+        getDocs(collection(db, 'inventory')),
+        getDocs(collection(db, 'orders')),
+        getDocs(collection(db, 'invoices'))
+      ])
+      const openOrders = orders.docs.filter(d =>
+        d.data().status !== 'shipped' && d.data().status !== 'cancelled'
+      ).length
+      const revenue = invoices.docs.reduce((sum, d) => sum + Number(d.data().total || 0), 0)
+      setStats({
+        clients: clients.size,
+        skus: inventory.size,
+        openOrders,
+        revenue
+      })
+    }
+    fetchStats()
+  }, [])
+
   return (
     <div>
       <div className="grid grid-cols-4 gap-4 mb-6">
         {[
-          { label: 'Total Clients', value: '0' },
-          { label: 'Active SKUs', value: '0' },
-          { label: 'Open Orders', value: '0' },
-          { label: 'Monthly Revenue', value: '$0' },
+          { label: 'Total Clients', value: stats.clients },
+          { label: 'Active SKUs', value: stats.skus },
+          { label: 'Open Orders', value: stats.openOrders },
+          { label: 'Total Revenue', value: `$${stats.revenue.toLocaleString()}` },
         ].map((card) => (
           <div key={card.label} className="bg-gray-900 border border-gray-800 rounded-xl p-4">
             <p className="text-xs text-gray-500 mb-1">{card.label}</p>
@@ -39,17 +68,7 @@ function DashboardHome() {
       </div>
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
         <h3 className="text-white font-medium mb-1">Welcome to JCT WMS</h3>
-        <p className="text-gray-400 text-sm">Your warehouse management system is ready. Start by adding your clients.</p>
-      </div>
-    </div>
-  )
-}
-
-function ComingSoon({ label }) {
-  return (
-    <div className="flex items-center justify-center h-64">
-      <div className="text-center">
-        <p className="text-gray-500 text-sm">{label} — coming soon</p>
+        <p className="text-gray-400 text-sm">Your warehouse management system is live and tracking real data.</p>
       </div>
     </div>
   )
@@ -67,7 +86,8 @@ export default function Dashboard() {
       case 'orders': return <Orders />
       case 'billing': return <Billing />
       case 'clients': return <Clients />
-      default: return <ComingSoon label={navItems.find(n => n.id === activePage)?.label} />
+      case 'reports': return <Reports />
+      default: return null
     }
   }
 
