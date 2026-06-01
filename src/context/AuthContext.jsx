@@ -5,10 +5,20 @@ import { auth, db } from '../firebase'
 
 const AuthContext = createContext()
 
+// Define which pages each role can access
+export const ROLE_ACCESS = {
+  admin:      ['dashboard', 'items', 'receiving', 'inventory', 'orders', 'billing', 'clients', 'accounts', 'staff', 'reports'],
+  staff:      ['items', 'receiving', 'inventory', 'orders'],
+  supervisor: ['dashboard', 'items', 'receiving', 'inventory', 'orders', 'reports'],
+  billing:    ['billing', 'clients', 'reports'],
+  client:     []
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [userRole, setUserRole] = useState(null)
   const [userClientId, setUserClientId] = useState(null)
+  const [userName, setUserName] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -19,15 +29,18 @@ export function AuthProvider({ children }) {
           const data = userDoc.data()
           setUserRole(data.role || 'admin')
           setUserClientId(data.clientId || null)
+          setUserName(data.name || null)
         } else {
           setUserRole('admin')
           setUserClientId(null)
+          setUserName(null)
         }
         setUser(firebaseUser)
       } else {
         setUser(null)
         setUserRole(null)
         setUserClientId(null)
+        setUserName(null)
       }
       setLoading(false)
     })
@@ -35,7 +48,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, userRole, userClientId, loading }}>
+    <AuthContext.Provider value={{ user, userRole, userClientId, userName, loading }}>
       {!loading && children}
     </AuthContext.Provider>
   )

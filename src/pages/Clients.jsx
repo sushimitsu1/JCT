@@ -5,7 +5,10 @@ import { Plus, X, Pencil, Trash2, Phone, Mail } from 'lucide-react'
 
 const emptyForm = {
   companyName: '', contactName: '', email: '',
-  phone: '', billingRate: '', startDate: '', notes: ''
+  phone: '', billingRate: '', startDate: '', notes: '',
+  chargeReceivingFee: false,
+  receivingFeeType: 'per_pallet',
+  receivingFeeRate: ''
 }
 
 export default function Clients() {
@@ -16,7 +19,6 @@ export default function Clients() {
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
 
-  // Load clients from Firestore
   const fetchClients = async () => {
     const snap = await getDocs(collection(db, 'clients'))
     const data = snap.docs.map(d => ({ id: d.id, ...d.data() }))
@@ -56,7 +58,10 @@ export default function Clients() {
       phone: client.phone || '',
       billingRate: client.billingRate || '',
       startDate: client.startDate || '',
-      notes: client.notes || ''
+      notes: client.notes || '',
+      chargeReceivingFee: client.chargeReceivingFee || false,
+      receivingFeeType: client.receivingFeeType || 'per_pallet',
+      receivingFeeRate: client.receivingFeeRate || ''
     })
     setEditId(client.id)
     setShowModal(true)
@@ -108,7 +113,8 @@ export default function Clients() {
               <th className="text-left px-4 py-3 text-gray-400 font-medium">Contact</th>
               <th className="text-left px-4 py-3 text-gray-400 font-medium">Email</th>
               <th className="text-left px-4 py-3 text-gray-400 font-medium">Phone</th>
-              <th className="text-left px-4 py-3 text-gray-400 font-medium">Rate/Pallet</th>
+              <th className="text-left px-4 py-3 text-gray-400 font-medium">Default Rate</th>
+              <th className="text-left px-4 py-3 text-gray-400 font-medium">Receiving Fee</th>
               <th className="text-left px-4 py-3 text-gray-400 font-medium">Since</th>
               <th className="px-4 py-3"></th>
             </tr>
@@ -116,7 +122,7 @@ export default function Clients() {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={7} className="text-center text-gray-500 py-12">
+                <td colSpan={8} className="text-center text-gray-500 py-12">
                   No clients yet — click Add Client to get started
                 </td>
               </tr>
@@ -126,16 +132,31 @@ export default function Clients() {
                   <td className="px-4 py-3 text-white font-medium">{client.companyName}</td>
                   <td className="px-4 py-3 text-gray-300">{client.contactName}</td>
                   <td className="px-4 py-3 text-gray-300">
-                    <a href={`mailto:${client.email}`} className="flex items-center gap-1 hover:text-blue-400">
-                      <Mail size={13} />{client.email}
-                    </a>
+                    {client.email && (
+                      <a href={`mailto:${client.email}`} className="flex items-center gap-1 hover:text-blue-400">
+                        <Mail size={13} />{client.email}
+                      </a>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-gray-300">
-                    <span className="flex items-center gap-1">
-                      <Phone size={13} />{client.phone}
-                    </span>
+                    {client.phone && (
+                      <span className="flex items-center gap-1">
+                        <Phone size={13} />{client.phone}
+                      </span>
+                    )}
                   </td>
-                  <td className="px-4 py-3 text-gray-300">${client.billingRate}</td>
+                  <td className="px-4 py-3 text-gray-300">
+                    {client.billingRate ? `$${client.billingRate}/pallet` : '—'}
+                  </td>
+                  <td className="px-4 py-3">
+                    {client.chargeReceivingFee ? (
+                      <span className="text-xs px-2 py-0.5 rounded-full border bg-blue-500/10 text-blue-400 border-blue-500/20">
+                        ${client.receivingFeeRate} / {client.receivingFeeType?.replace('per_', '')}
+                      </span>
+                    ) : (
+                      <span className="text-gray-600 text-xs">None</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-gray-300">{client.startDate}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2 justify-end">
@@ -156,9 +177,8 @@ export default function Clients() {
 
       {/* Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4 overflow-y-auto py-8">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-lg">
-            {/* Modal header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
               <h3 className="text-white font-semibold">{editId ? 'Edit Client' : 'Add New Client'}</h3>
               <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-white">
@@ -166,7 +186,6 @@ export default function Clients() {
               </button>
             </div>
 
-            {/* Modal body */}
             <div className="px-6 py-4 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2">
@@ -206,7 +225,7 @@ export default function Clients() {
                   />
                 </div>
                 <div>
-                  <label className="text-gray-400 text-xs mb-1 block">Billing Rate ($/pallet)</label>
+                  <label className="text-gray-400 text-xs mb-1 block">Default Storage Rate ($/pallet)</label>
                   <input
                     type="number"
                     value={form.billingRate}
@@ -224,6 +243,49 @@ export default function Clients() {
                     className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500"
                   />
                 </div>
+
+                {/* Receiving fee config */}
+                <div className="col-span-2 border border-gray-700 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-white text-sm font-medium">Receiving Fee</p>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={form.chargeReceivingFee}
+                        onChange={e => setForm({ ...form, chargeReceivingFee: e.target.checked })}
+                        className="w-4 h-4 accent-blue-500"
+                      />
+                      <span className="text-gray-400 text-xs">Charge receiving fee for this client</span>
+                    </label>
+                  </div>
+                  {form.chargeReceivingFee && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-gray-400 text-xs mb-1 block">Fee Type</label>
+                        <select
+                          value={form.receivingFeeType}
+                          onChange={e => setForm({ ...form, receivingFeeType: e.target.value })}
+                          className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500"
+                        >
+                          <option value="per_pallet">Per pallet received</option>
+                          <option value="per_unit">Per unit received</option>
+                          <option value="per_receipt">Per receipt (flat)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-gray-400 text-xs mb-1 block">Rate ($)</label>
+                        <input
+                          type="number"
+                          value={form.receivingFeeRate}
+                          onChange={e => setForm({ ...form, receivingFeeRate: e.target.value })}
+                          className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500"
+                          placeholder="e.g. 10.00"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="col-span-2">
                   <label className="text-gray-400 text-xs mb-1 block">Notes</label>
                   <textarea
@@ -237,7 +299,6 @@ export default function Clients() {
               </div>
             </div>
 
-            {/* Modal footer */}
             <div className="px-6 py-4 border-t border-gray-800 flex justify-end gap-3">
               <button
                 onClick={() => setShowModal(false)}
