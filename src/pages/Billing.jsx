@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { collection, getDocs, addDoc, updateDoc, doc, query, orderBy } from 'firebase/firestore'
+import { collection, getDocs, addDoc, updateDoc, doc, query, orderBy, where } from 'firebase/firestore'
 import { db } from '../firebase'
 import {
   DollarSign, FileText, Plus, X, Download,
