@@ -5,11 +5,12 @@ import {
 } from 'firebase/firestore'
 import { db } from '../firebase'
 import {
-  Plus, X, Package, ChevronDown, RefreshCw, Search,
+  Plus, X, Package, ChevronDown, Search,
   ArrowLeft, Truck, DollarSign, FileText,
   CheckCircle, Clock, Pencil, Trash2, Save
 } from 'lucide-react'
 import BarcodeScanner from '../components/BarcodeScanner'
+import TransactionCharges from '../components/TransactionCharges'
 
 const generatePalletId = () => {
   const now = new Date()
@@ -29,15 +30,6 @@ const emptyLineItem = {
   location: '', condition: 'A', weight: '', volume: '', notes: ''
 }
 
-const CHARGE_TEMPLATES = [
-  { label: 'Receiving Fee',   category: 'Handling', unit: 'pallet',  rate: 10  },
-  { label: 'Unloading Fee',   category: 'Handling', unit: 'pallet',  rate: 5   },
-  { label: 'Labeling Fee',    category: 'Handling', unit: 'pallet',  rate: 2.5 },
-  { label: 'Inspection Fee',  category: 'Handling', unit: 'receipt', rate: 25  },
-  { label: 'Storage Setup',   category: 'Storage',  unit: 'pallet',  rate: 5   },
-  { label: 'Hazmat Handling', category: 'Special',  unit: 'pallet',  rate: 15  },
-]
-
 const inputCls = "w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500"
 const labelCls = "text-gray-400 text-xs mb-1 block"
 
@@ -46,12 +38,10 @@ export default function Receiving() {
   const [clients, setClients] = useState([])
   const [catalogItems, setCatalogItems] = useState([])
 
-  // Views: 'list' | 'new' | 'detail'
   const [view, setView] = useState('list')
   const [selectedReceipt, setSelectedReceipt] = useState(null)
   const [activeTab, setActiveTab] = useState('items')
 
-  // List filters
   const [filterClient, setFilterClient] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
   const [filterSearch, setFilterSearch] = useState('')
@@ -59,7 +49,6 @@ export default function Receiving() {
   const [filterDateTo, setFilterDateTo] = useState('')
   const [sidebarCollapsed, setSidebarCollapsed] = useState({})
 
-  // New receipt form
   const [form, setForm] = useState({
     clientId: '', clientName: '', referenceId: '', poNumber: '',
     arrivalDate: new Date().toISOString().slice(0,16),
@@ -72,7 +61,6 @@ export default function Receiving() {
   })
   const [loading, setLoading] = useState(false)
 
-  // Detail editing
   const [editingItem, setEditingItem] = useState(null)
   const [editItemForm, setEditItemForm] = useState({ ...emptyLineItem })
   const [showAddItem, setShowAddItem] = useState(false)
@@ -80,9 +68,8 @@ export default function Receiving() {
   const [skuDropdown, setSkuDropdown] = useState(null)
   const [skuSearch, setSkuSearch] = useState('')
 
-  // Barcode scanner
   const [showScanner, setShowScanner] = useState(false)
-  const [scanTarget, setScanTarget] = useState(null) // { type: 'form'|'detail', index: number }
+  const [scanTarget, setScanTarget] = useState(null)
 
   const fetchData = async () => {
     const [receiptsSnap, clientsSnap, catalogSnap] = await Promise.all([
@@ -97,7 +84,6 @@ export default function Receiving() {
 
   useEffect(() => { fetchData() }, [])
 
-  // ─── HELPERS ──────────────────────────────────────────────────────
   const clientSkus = (clientId) => catalogItems.filter(i => i.clientId === clientId)
 
   const filteredSkus = (clientId) => {
@@ -122,26 +108,17 @@ export default function Receiving() {
     </button>
   )
 
-  // ─── BARCODE SCAN HANDLER ─────────────────────────────────────────
   const handleScan = (barcode) => {
     setShowScanner(false)
     if (!scanTarget) return
-
     if (scanTarget.type === 'form') {
       const allSkus = clientSkus(form.clientId)
-      const match = allSkus.find(s =>
-        s.sku === barcode || s.sku === barcode.toUpperCase()
-      )
-      if (match) {
-        selectSkuForForm(scanTarget.index, match)
-      } else {
-        updateFormLineItem(scanTarget.index, 'sku', barcode.toUpperCase())
-      }
+      const match = allSkus.find(s => s.sku === barcode || s.sku === barcode.toUpperCase())
+      if (match) { selectSkuForForm(scanTarget.index, match) }
+      else { updateFormLineItem(scanTarget.index, 'sku', barcode.toUpperCase()) }
     } else if (scanTarget.type === 'detail') {
       const allSkus = clientSkus(selectedReceipt?.clientId)
-      const match = allSkus.find(s =>
-        s.sku === barcode || s.sku === barcode.toUpperCase()
-      )
+      const match = allSkus.find(s => s.sku === barcode || s.sku === barcode.toUpperCase())
       setNewItemForm(prev => ({
         ...prev,
         sku: match ? match.sku : barcode.toUpperCase(),
@@ -152,7 +129,6 @@ export default function Receiving() {
     setScanTarget(null)
   }
 
-  // ─── NEW RECEIPT SUBMIT ────────────────────────────────────────────
   const handleCreate = async () => {
     if (!form.clientId || !form.arrivalDate) return
     setLoading(true)
@@ -160,7 +136,8 @@ export default function Receiving() {
       const validItems = form.lineItems.filter(i => i.sku)
       const totalPallets = validItems.reduce((s, i) => s + Number(i.quantity || 0), 0)
       const totalWeight = validItems.reduce((s, i) => s + Number(i.weight || 0), 0)
-      const totalCharges = (form.charges || []).reduce((s, c) => s + Number(c.total || 0), 0)
+      const confirmedCharges = (form.charges || []).filter(c => c.status === 'confirmed' || c.status === 'adjusted')
+      const totalCharges = confirmedCharges.reduce((s, c) => s + Number(c.total || 0), 0)
 
       const receiptData = {
         clientId: form.clientId,
@@ -226,7 +203,6 @@ export default function Receiving() {
     warehouseInstructions: '', lineItems: [{ ...emptyLineItem }], charges: []
   })
 
-  // ─── LINE ITEM HELPERS ────────────────────────────────────────────
   const addFormLineItem = () =>
     setForm({ ...form, lineItems: [...form.lineItems, { ...emptyLineItem }] })
 
@@ -241,65 +217,15 @@ export default function Receiving() {
 
   const selectSkuForForm = (i, catalogItem) => {
     const items = [...form.lineItems]
-    items[i] = {
-      ...items[i],
-      sku: catalogItem.sku,
-      description: catalogItem.description || '',
-      weight: catalogItem.weight || ''
-    }
+    items[i] = { ...items[i], sku: catalogItem.sku, description: catalogItem.description || '', weight: catalogItem.weight || '' }
     setForm({ ...form, lineItems: items })
     setSkuDropdown(null)
     setSkuSearch('')
   }
 
-  // ─── CHARGES HELPERS ──────────────────────────────────────────────
-  const addCharge = (template, isForm = true) => {
-    const charge = {
-      label: template.label, category: template.category,
-      unit: template.unit, qty: 1, rate: template.rate,
-      total: template.rate, origin: 'Manual'
-    }
-    if (isForm) {
-      setForm({ ...form, charges: [...(form.charges || []), charge] })
-    } else {
-      const updated = { ...selectedReceipt, charges: [...(selectedReceipt.charges || []), charge] }
-      setSelectedReceipt(updated)
-      saveReceiptField(selectedReceipt.id, 'charges', updated.charges)
-    }
-  }
-
-  const updateCharge = (i, field, value, isForm = true) => {
-    const source = isForm ? form.charges : selectedReceipt.charges
-    const charges = [...(source || [])]
-    charges[i] = { ...charges[i], [field]: value }
-    if (field === 'qty' || field === 'rate')
-      charges[i].total = Number(charges[i].qty || 0) * Number(charges[i].rate || 0)
-    if (field === 'total') charges[i].total = Number(value)
-    if (isForm) {
-      setForm({ ...form, charges })
-    } else {
-      const updated = { ...selectedReceipt, charges }
-      setSelectedReceipt(updated)
-      saveReceiptField(selectedReceipt.id, 'charges', charges)
-    }
-  }
-
-  const removeCharge = (i, isForm = true) => {
-    const source = isForm ? form.charges : selectedReceipt.charges
-    const charges = (source || []).filter((_, idx) => idx !== i)
-    if (isForm) {
-      setForm({ ...form, charges })
-    } else {
-      const updated = { ...selectedReceipt, charges }
-      setSelectedReceipt(updated)
-      saveReceiptField(selectedReceipt.id, 'charges', charges)
-    }
-  }
-
   const chargesTotal = (charges) =>
     (charges || []).reduce((s, c) => s + Number(c.total || 0), 0)
 
-  // ─── DETAIL PAGE ACTIONS ──────────────────────────────────────────
   const saveReceiptField = async (id, field, value) => {
     await updateDoc(doc(db, 'receipts', id), { [field]: value })
     fetchData()
@@ -322,12 +248,8 @@ export default function Receiving() {
 
   const addLineItemToReceipt = async () => {
     if (!newItemForm.sku) return
-    const updated = [
-      ...(selectedReceipt.lineItems || []),
-      { ...newItemForm, sku: newItemForm.sku.toUpperCase() }
-    ]
+    const updated = [...(selectedReceipt.lineItems || []), { ...newItemForm, sku: newItemForm.sku.toUpperCase() }]
     await updateDoc(doc(db, 'receipts', selectedReceipt.id), { lineItems: updated })
-
     const pallets = Number(newItemForm.quantity || 1)
     for (let p = 0; p < pallets; p++) {
       await addDoc(collection(db, 'inventory'), {
@@ -346,7 +268,6 @@ export default function Receiving() {
         createdAt: new Date().toISOString()
       })
     }
-
     setSelectedReceipt({ ...selectedReceipt, lineItems: updated })
     setNewItemForm({ ...emptyLineItem })
     setShowAddItem(false)
@@ -370,7 +291,6 @@ export default function Receiving() {
     fetchData()
   }
 
-  // ─── FILTER ───────────────────────────────────────────────────────
   const filtered = receipts.filter(r => {
     if (filterClient && r.clientId !== filterClient) return false
     if (filterStatus && r.status !== filterStatus) return false
@@ -389,7 +309,6 @@ export default function Receiving() {
   if (view === 'new') {
     return (
       <div className="p-6">
-        {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <button onClick={() => { setView('list'); resetForm() }}
@@ -400,27 +319,21 @@ export default function Receiving() {
             <h2 className="text-xl font-semibold text-white">New Receipt</h2>
           </div>
           <div className="flex gap-3">
-            <button
-              onClick={() => { setScanTarget({ type: 'form', index: 0 }); setShowScanner(true) }}
-              className="flex items-center gap-2 px-4 py-2 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
-            >
+            <button onClick={() => { setScanTarget({ type: 'form', index: 0 }); setShowScanner(true) }}
+              className="flex items-center gap-2 px-4 py-2 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors">
               📷 Scan SKU
             </button>
             <button onClick={() => { setView('list'); resetForm() }}
               className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-700 rounded-lg">
               Cancel
             </button>
-            <button
-              onClick={handleCreate}
-              disabled={loading || !form.clientId || !form.arrivalDate}
-              className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg"
-            >
+            <button onClick={handleCreate} disabled={loading || !form.clientId || !form.arrivalDate}
+              className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg">
               {loading ? 'Saving...' : 'Create Receipt'}
             </button>
           </div>
         </div>
 
-        {/* Tabs */}
         <div className="flex gap-2 border-b border-gray-800 mb-4">
           {[
             { id: 'transport', label: 'Transport Information', icon: Truck },
@@ -429,16 +342,13 @@ export default function Receiving() {
           ].map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                activeTab === tab.id
-                  ? 'border-blue-500 text-blue-400'
-                  : 'border-transparent text-gray-500 hover:text-gray-300'
+                activeTab === tab.id ? 'border-blue-500 text-blue-400' : 'border-transparent text-gray-500 hover:text-gray-300'
               }`}>
               <tab.icon size={14} />{tab.label}
             </button>
           ))}
         </div>
 
-        {/* ── Transport Info ── */}
         {activeTab === 'transport' && (
           <div className="space-y-4">
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
@@ -476,34 +386,15 @@ export default function Receiving() {
                 </div>
               </div>
             </div>
-
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
               <h3 className="text-white font-medium mb-4">Transport Details</h3>
               <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className={labelCls}>Carrier</label>
-                  <input value={form.carrier} onChange={e => setForm({ ...form, carrier: e.target.value })} className={inputCls} placeholder="UPS, FedEx..." />
-                </div>
-                <div>
-                  <label className={labelCls}>Tracking Number</label>
-                  <input value={form.trackingNumber} onChange={e => setForm({ ...form, trackingNumber: e.target.value })} className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>BOL Number</label>
-                  <input value={form.bolNumber} onChange={e => setForm({ ...form, bolNumber: e.target.value })} className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>Truck Number</label>
-                  <input value={form.truckNumber} onChange={e => setForm({ ...form, truckNumber: e.target.value })} className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>Seal Number</label>
-                  <input value={form.sealNumber} onChange={e => setForm({ ...form, sealNumber: e.target.value })} className={inputCls} />
-                </div>
-                <div>
-                  <label className={labelCls}>Driver Name</label>
-                  <input value={form.driverName} onChange={e => setForm({ ...form, driverName: e.target.value })} className={inputCls} />
-                </div>
+                <div><label className={labelCls}>Carrier</label><input value={form.carrier} onChange={e => setForm({ ...form, carrier: e.target.value })} className={inputCls} placeholder="UPS, FedEx..." /></div>
+                <div><label className={labelCls}>Tracking Number</label><input value={form.trackingNumber} onChange={e => setForm({ ...form, trackingNumber: e.target.value })} className={inputCls} /></div>
+                <div><label className={labelCls}>BOL Number</label><input value={form.bolNumber} onChange={e => setForm({ ...form, bolNumber: e.target.value })} className={inputCls} /></div>
+                <div><label className={labelCls}>Truck Number</label><input value={form.truckNumber} onChange={e => setForm({ ...form, truckNumber: e.target.value })} className={inputCls} /></div>
+                <div><label className={labelCls}>Seal Number</label><input value={form.sealNumber} onChange={e => setForm({ ...form, sealNumber: e.target.value })} className={inputCls} /></div>
+                <div><label className={labelCls}>Driver Name</label><input value={form.driverName} onChange={e => setForm({ ...form, driverName: e.target.value })} className={inputCls} /></div>
               </div>
               <div className="mt-4">
                 <label className={labelCls}>Notes</label>
@@ -514,16 +405,13 @@ export default function Receiving() {
           </div>
         )}
 
-        {/* ── Line Items ── */}
         {activeTab === 'items' && (
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-white font-medium">Receipt Line Items</h3>
               <div className="flex gap-2">
-                <button
-                  onClick={() => { setScanTarget({ type: 'form', index: form.lineItems.length - 1 }); setShowScanner(true) }}
-                  className="flex items-center gap-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg"
-                >
+                <button onClick={() => { setScanTarget({ type: 'form', index: form.lineItems.length - 1 }); setShowScanner(true) }}
+                  className="flex items-center gap-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg">
                   📷 Scan
                 </button>
                 <button onClick={addFormLineItem}
@@ -532,8 +420,6 @@ export default function Receiving() {
                 </button>
               </div>
             </div>
-
-            {/* Column headers */}
             <div className="grid grid-cols-12 gap-2 mb-2 px-2 text-gray-500 text-xs border-b border-gray-800 pb-2">
               <div className="col-span-2">SKU</div>
               <div className="col-span-3">Description</div>
@@ -544,37 +430,26 @@ export default function Receiving() {
               <div className="col-span-1">Weight</div>
               <div className="col-span-1"></div>
             </div>
-
             {form.lineItems.map((item, i) => (
               <div key={i} className="grid grid-cols-12 gap-2 items-center mb-2">
-                {/* SKU with search + scan */}
                 <div className="col-span-2 relative">
                   <div className="flex items-center gap-1">
                     <div className="flex-1 flex items-center bg-gray-800 border border-gray-700 rounded-lg overflow-hidden focus-within:border-blue-500">
                       <Search size={11} className="text-gray-500 ml-2 flex-shrink-0" />
                       <input
                         value={item.sku}
-                        onChange={e => {
-                          updateFormLineItem(i, 'sku', e.target.value.toUpperCase())
-                          setSkuSearch(e.target.value)
-                          setSkuDropdown(i)
-                        }}
+                        onChange={e => { updateFormLineItem(i, 'sku', e.target.value.toUpperCase()); setSkuSearch(e.target.value); setSkuDropdown(i) }}
                         onFocus={() => { setSkuSearch(''); setSkuDropdown(i) }}
                         onBlur={() => setTimeout(() => setSkuDropdown(null), 150)}
                         className="flex-1 bg-transparent text-white px-2 py-2 text-xs focus:outline-none uppercase"
                         placeholder="SKU..."
                       />
                     </div>
-                    {/* Scan button per row */}
-                    <button
-                      onClick={() => { setScanTarget({ type: 'form', index: i }); setShowScanner(true) }}
-                      className="text-blue-400 hover:text-blue-300 p-1 flex-shrink-0"
-                      title="Scan barcode"
-                    >
+                    <button onClick={() => { setScanTarget({ type: 'form', index: i }); setShowScanner(true) }}
+                      className="text-blue-400 hover:text-blue-300 p-1 flex-shrink-0" title="Scan barcode">
                       📷
                     </button>
                   </div>
-                  {/* SKU Dropdown */}
                   {skuDropdown === i && filteredSkus(form.clientId).length > 0 && (
                     <div className="absolute top-full left-0 right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto">
                       {filteredSkus(form.clientId)
@@ -582,49 +457,35 @@ export default function Receiving() {
                         .map(s => (
                           <button key={s.id} onMouseDown={() => selectSkuForForm(i, s)}
                             className="w-full text-left px-3 py-2 hover:bg-gray-700 border-b border-gray-700/50 last:border-0">
-                            <div className="flex justify-between">
-                              <span className="text-white text-xs font-mono">{s.sku}</span>
-                            </div>
+                            <span className="text-white text-xs font-mono">{s.sku}</span>
                             <p className="text-gray-400 text-xs truncate">{s.description}</p>
                           </button>
                         ))}
                     </div>
                   )}
                 </div>
-
                 <input value={item.description} onChange={e => updateFormLineItem(i, 'description', e.target.value)}
-                  className="col-span-3 bg-gray-800 border border-gray-700 text-white rounded-lg px-2 py-2 text-xs focus:outline-none focus:border-blue-500"
-                  placeholder="Description" />
-
+                  className="col-span-3 bg-gray-800 border border-gray-700 text-white rounded-lg px-2 py-2 text-xs focus:outline-none focus:border-blue-500" placeholder="Description" />
                 <input type="number" value={item.quantity} onChange={e => updateFormLineItem(i, 'quantity', e.target.value)}
-                  className="col-span-1 bg-gray-800 border border-gray-700 text-white rounded-lg px-2 py-2 text-xs focus:outline-none focus:border-blue-500"
-                  placeholder="0" />
-
+                  className="col-span-1 bg-gray-800 border border-gray-700 text-white rounded-lg px-2 py-2 text-xs focus:outline-none focus:border-blue-500" placeholder="0" />
                 <select value={item.primaryUnits} onChange={e => updateFormLineItem(i, 'primaryUnits', e.target.value)}
                   className="col-span-1 bg-gray-800 border border-gray-700 text-white rounded-lg px-2 py-2 text-xs focus:outline-none">
                   <option>Pallet</option><option>Each</option><option>Case</option><option>Box</option>
                 </select>
-
                 <select value={item.condition} onChange={e => updateFormLineItem(i, 'condition', e.target.value)}
                   className="col-span-1 bg-gray-800 border border-gray-700 text-white rounded-lg px-2 py-2 text-xs focus:outline-none">
                   <option value="A">A</option><option value="B">B</option><option value="C">C</option>
                 </select>
-
                 <input value={item.location} onChange={e => updateFormLineItem(i, 'location', e.target.value)}
-                  className="col-span-2 bg-gray-800 border border-gray-700 text-white rounded-lg px-2 py-2 text-xs focus:outline-none focus:border-blue-500"
-                  placeholder="Location" />
-
+                  className="col-span-2 bg-gray-800 border border-gray-700 text-white rounded-lg px-2 py-2 text-xs focus:outline-none focus:border-blue-500" placeholder="Location" />
                 <input type="number" value={item.weight} onChange={e => updateFormLineItem(i, 'weight', e.target.value)}
-                  className="col-span-1 bg-gray-800 border border-gray-700 text-white rounded-lg px-2 py-2 text-xs focus:outline-none focus:border-blue-500"
-                  placeholder="lbs" />
-
+                  className="col-span-1 bg-gray-800 border border-gray-700 text-white rounded-lg px-2 py-2 text-xs focus:outline-none focus:border-blue-500" placeholder="lbs" />
                 <button onClick={() => removeFormLineItem(i)} disabled={form.lineItems.length === 1}
                   className="col-span-1 text-gray-600 hover:text-red-400 disabled:opacity-20 flex items-center justify-center">
                   <X size={14} />
                 </button>
               </div>
             ))}
-
             <div className="border-t border-gray-800 mt-4 pt-3 flex justify-end gap-8 text-sm">
               <span className="text-gray-400">Total Pallets: <span className="text-white font-medium">{form.lineItems.reduce((s, i) => s + Number(i.quantity || 0), 0)}</span></span>
               <span className="text-gray-400">Total Weight: <span className="text-white font-medium">{form.lineItems.reduce((s, i) => s + Number(i.weight || 0), 0)} lbs</span></span>
@@ -632,85 +493,28 @@ export default function Receiving() {
           </div>
         )}
 
-        {/* ── Charges ── */}
         {activeTab === 'charges' && (
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-white font-medium">Receipt Charges</h3>
-              <div className="relative group">
-                <button className="flex items-center gap-1 text-sm bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg">
-                  <Plus size={13} /> Add Charge <ChevronDown size={12} />
-                </button>
-                <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 w-52 hidden group-hover:block">
-                  {CHARGE_TEMPLATES.map(t => (
-                    <button key={t.label} onClick={() => addCharge(t, true)}
-                      className="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700 border-b border-gray-700/50 last:border-0">
-                      <div className="flex justify-between">
-                        <span>{t.label}</span>
-                        <span className="text-gray-500">${t.rate}/{t.unit}</span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="border border-gray-800 rounded-xl overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-800 bg-gray-800/50">
-                    {['Category', 'Charge Label', 'Unit', 'Qty', 'Rate ($)', 'Total ($)', ''].map(h => (
-                      <th key={h} className="text-left px-4 py-3 text-gray-400 font-medium text-xs">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {(form.charges || []).length === 0 ? (
-                    <tr><td colSpan={7} className="text-center py-8 text-gray-500 text-xs">No charges yet — add from templates above</td></tr>
-                  ) : (form.charges || []).map((charge, i) => (
-                    <tr key={i} className="border-b border-gray-800/50">
-                      <td className="px-4 py-3 text-xs text-gray-400">{charge.category}</td>
-                      <td className="px-4 py-3">
-                        <input value={charge.label} onChange={e => updateCharge(i, 'label', e.target.value, true)}
-                          className="bg-transparent text-white text-xs w-full outline-none" />
-                      </td>
-                      <td className="px-4 py-3 text-xs text-gray-400">{charge.unit}</td>
-                      <td className="px-4 py-3">
-                        <input type="number" value={charge.qty} onChange={e => updateCharge(i, 'qty', e.target.value, true)}
-                          className="bg-gray-800 border border-gray-700 text-white rounded px-2 py-1 text-xs w-16 focus:outline-none" />
-                      </td>
-                      <td className="px-4 py-3">
-                        <input type="number" value={charge.rate} onChange={e => updateCharge(i, 'rate', e.target.value, true)}
-                          className="bg-gray-800 border border-gray-700 text-white rounded px-2 py-1 text-xs w-20 focus:outline-none" />
-                      </td>
-                      <td className="px-4 py-3 text-white font-medium text-xs">${Number(charge.total).toFixed(2)}</td>
-                      <td className="px-4 py-3">
-                        <button onClick={() => removeCharge(i, true)} className="text-gray-600 hover:text-red-400"><X size={13} /></button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                {(form.charges || []).length > 0 && (
-                  <tfoot>
-                    <tr className="border-t border-gray-700 bg-gray-800/30">
-                      <td colSpan={5} className="px-4 py-3 text-sm font-medium text-gray-400">Total Charges</td>
-                      <td className="px-4 py-3 text-white font-semibold">${chargesTotal(form.charges).toFixed(2)}</td>
-                      <td></td>
-                    </tr>
-                  </tfoot>
-                )}
-              </table>
-            </div>
+            <h3 className="text-white font-medium mb-4">Receipt Charges</h3>
+            <TransactionCharges
+              charges={(form.charges || []).map((c, i) => ({ ...c, id: c.id || i, status: c.status || 'confirmed' }))}
+              onChargesChange={newCharges => setForm({ ...form, charges: newCharges })}
+              rateCard={clients.find(c => c.id === form.clientId)?.rateCard || []}
+              trigger="on_receive"
+              quantities={{
+                pallets: form.lineItems.reduce((s, i) => s + Number(i.quantity || 0), 0),
+                units: form.lineItems.reduce((s, i) => s + Number(i.quantity || 0), 0),
+                cartons: 0,
+                orders: 1,
+              }}
+              clientName={form.clientName}
+            />
           </div>
         )}
 
-        {/* Barcode Scanner */}
         {showScanner && (
-          <BarcodeScanner
-            title="Scan SKU Barcode"
-            onScan={handleScan}
-            onClose={() => { setShowScanner(false); setScanTarget(null) }}
-          />
+          <BarcodeScanner title="Scan SKU Barcode" onScan={handleScan}
+            onClose={() => { setShowScanner(false); setScanTarget(null) }} />
         )}
       </div>
     )
@@ -726,7 +530,6 @@ export default function Receiving() {
 
     return (
       <div className="p-6">
-        {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <button onClick={() => { setView('list'); setSelectedReceipt(null) }}
@@ -761,7 +564,6 @@ export default function Receiving() {
           </div>
         </div>
 
-        {/* Info bar */}
         <div className="grid grid-cols-6 gap-3 mb-4">
           {[
             { label: 'Customer',     value: r.clientName },
@@ -778,7 +580,6 @@ export default function Receiving() {
           ))}
         </div>
 
-        {/* Tabs */}
         <div className="flex gap-2 border-b border-gray-800 mb-4">
           {[
             { id: 'transport', label: 'Transport Information', icon: Truck },
@@ -788,33 +589,27 @@ export default function Receiving() {
           ].map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                activeTab === tab.id
-                  ? 'border-blue-500 text-blue-400'
-                  : 'border-transparent text-gray-500 hover:text-gray-300'
+                activeTab === tab.id ? 'border-blue-500 text-blue-400' : 'border-transparent text-gray-500 hover:text-gray-300'
               }`}>
               <tab.icon size={14} />{tab.label}
             </button>
           ))}
         </div>
 
-        {/* ── Transport Info ── */}
         {activeTab === 'transport' && (
           <div className="space-y-4">
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
               <h3 className="text-white font-medium mb-4">Order Information</h3>
               <div className="grid grid-cols-3 gap-x-8 gap-y-3 text-sm">
                 {[
-                  ['Customer',               r.clientName || '—'],
-                  ['Reference ID',           r.referenceId || '—'],
-                  ['Purchase Order',         r.poNumber || '—'],
-                  ['Arrival Date',           r.arrivalDate ? new Date(r.arrivalDate).toLocaleString() : '—'],
-                  ['Expected Date',          r.expectedDate ? new Date(r.expectedDate).toLocaleString() : '—'],
+                  ['Customer', r.clientName || '—'],
+                  ['Reference ID', r.referenceId || '—'],
+                  ['Purchase Order', r.poNumber || '—'],
+                  ['Arrival Date', r.arrivalDate ? new Date(r.arrivalDate).toLocaleString() : '—'],
+                  ['Expected Date', r.expectedDate ? new Date(r.expectedDate).toLocaleString() : '—'],
                   ['Warehouse Instructions', r.warehouseInstructions || '—'],
                 ].map(([label, value]) => (
-                  <div key={label}>
-                    <span className="text-gray-500 text-xs">{label}</span>
-                    <p className="text-white">{value}</p>
-                  </div>
+                  <div key={label}><span className="text-gray-500 text-xs">{label}</span><p className="text-white">{value}</p></div>
                 ))}
               </div>
             </div>
@@ -822,17 +617,14 @@ export default function Receiving() {
               <h3 className="text-white font-medium mb-4">Transport Details</h3>
               <div className="grid grid-cols-3 gap-x-8 gap-y-3 text-sm">
                 {[
-                  ['Carrier',    r.carrier || '—'],
+                  ['Carrier', r.carrier || '—'],
                   ['Tracking #', r.trackingNumber || '—'],
-                  ['BOL #',      r.bolNumber || '—'],
-                  ['Truck #',    r.truckNumber || '—'],
-                  ['Seal #',     r.sealNumber || '—'],
-                  ['Driver',     r.driverName || '—'],
+                  ['BOL #', r.bolNumber || '—'],
+                  ['Truck #', r.truckNumber || '—'],
+                  ['Seal #', r.sealNumber || '—'],
+                  ['Driver', r.driverName || '—'],
                 ].map(([label, value]) => (
-                  <div key={label}>
-                    <span className="text-gray-500 text-xs">{label}</span>
-                    <p className="text-white">{value}</p>
-                  </div>
+                  <div key={label}><span className="text-gray-500 text-xs">{label}</span><p className="text-white">{value}</p></div>
                 ))}
               </div>
               {r.notes && (
@@ -845,7 +637,6 @@ export default function Receiving() {
           </div>
         )}
 
-        {/* ── Line Items ── */}
         {activeTab === 'items' && (
           <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
@@ -854,16 +645,12 @@ export default function Receiving() {
                 <span className="text-gray-500 text-xs">{(r.lineItems || []).length} results</span>
                 {r.status !== 'complete' && (
                   <>
-                    <button
-                      onClick={() => { setScanTarget({ type: 'detail' }); setShowScanner(true) }}
-                      className="flex items-center gap-1 text-sm bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg"
-                    >
+                    <button onClick={() => { setScanTarget({ type: 'detail' }); setShowScanner(true) }}
+                      className="flex items-center gap-1 text-sm bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg">
                       📷 Scan
                     </button>
-                    <button
-                      onClick={() => { setShowAddItem(!showAddItem); setNewItemForm({ ...emptyLineItem }) }}
-                      className="flex items-center gap-1 text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg"
-                    >
+                    <button onClick={() => { setShowAddItem(!showAddItem); setNewItemForm({ ...emptyLineItem }) }}
+                      className="flex items-center gap-1 text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg">
                       <Plus size={13} /> Add Line Item
                     </button>
                   </>
@@ -871,7 +658,6 @@ export default function Receiving() {
               </div>
             </div>
 
-            {/* Add Item Form */}
             {showAddItem && (
               <div className="px-5 py-4 border-b border-gray-800 bg-gray-800/30">
                 <p className="text-white text-sm font-medium mb-3">New Line Item</p>
@@ -879,17 +665,11 @@ export default function Receiving() {
                   <div className="col-span-2">
                     <label className={labelCls}>SKU *</label>
                     <div className="relative">
-                      <input
-                        value={newItemForm.sku}
-                        onChange={e => {
-                          setNewItemForm({ ...newItemForm, sku: e.target.value.toUpperCase() })
-                          setSkuSearch(e.target.value)
-                          setSkuDropdown('new')
-                        }}
+                      <input value={newItemForm.sku}
+                        onChange={e => { setNewItemForm({ ...newItemForm, sku: e.target.value.toUpperCase() }); setSkuSearch(e.target.value); setSkuDropdown('new') }}
                         onFocus={() => { setSkuSearch(''); setSkuDropdown('new') }}
                         onBlur={() => setTimeout(() => setSkuDropdown(null), 150)}
-                        className={inputCls} placeholder="SKU..."
-                      />
+                        className={inputCls} placeholder="SKU..." />
                       {skuDropdown === 'new' && filteredSkus(r.clientId).length > 0 && (
                         <div className="absolute top-full left-0 right-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 max-h-40 overflow-y-auto">
                           {filteredSkus(r.clientId).map(s => (
@@ -904,34 +684,12 @@ export default function Receiving() {
                       )}
                     </div>
                   </div>
-                  <div className="col-span-3">
-                    <label className={labelCls}>Description</label>
-                    <input value={newItemForm.description} onChange={e => setNewItemForm({ ...newItemForm, description: e.target.value })} className={inputCls} placeholder="Description" />
-                  </div>
-                  <div className="col-span-1">
-                    <label className={labelCls}>Qty</label>
-                    <input type="number" value={newItemForm.quantity} onChange={e => setNewItemForm({ ...newItemForm, quantity: e.target.value })} className={inputCls} placeholder="0" />
-                  </div>
-                  <div className="col-span-1">
-                    <label className={labelCls}>Unit</label>
-                    <select value={newItemForm.primaryUnits} onChange={e => setNewItemForm({ ...newItemForm, primaryUnits: e.target.value })} className={inputCls}>
-                      <option>Pallet</option><option>Each</option><option>Case</option>
-                    </select>
-                  </div>
-                  <div className="col-span-1">
-                    <label className={labelCls}>Cond.</label>
-                    <select value={newItemForm.condition} onChange={e => setNewItemForm({ ...newItemForm, condition: e.target.value })} className={inputCls}>
-                      <option value="A">A</option><option value="B">B</option><option value="C">C</option>
-                    </select>
-                  </div>
-                  <div className="col-span-2">
-                    <label className={labelCls}>Location</label>
-                    <input value={newItemForm.location} onChange={e => setNewItemForm({ ...newItemForm, location: e.target.value })} className={inputCls} placeholder="Bin" />
-                  </div>
-                  <div className="col-span-1">
-                    <label className={labelCls}>Weight</label>
-                    <input type="number" value={newItemForm.weight} onChange={e => setNewItemForm({ ...newItemForm, weight: e.target.value })} className={inputCls} placeholder="lbs" />
-                  </div>
+                  <div className="col-span-3"><label className={labelCls}>Description</label><input value={newItemForm.description} onChange={e => setNewItemForm({ ...newItemForm, description: e.target.value })} className={inputCls} placeholder="Description" /></div>
+                  <div className="col-span-1"><label className={labelCls}>Qty</label><input type="number" value={newItemForm.quantity} onChange={e => setNewItemForm({ ...newItemForm, quantity: e.target.value })} className={inputCls} placeholder="0" /></div>
+                  <div className="col-span-1"><label className={labelCls}>Unit</label><select value={newItemForm.primaryUnits} onChange={e => setNewItemForm({ ...newItemForm, primaryUnits: e.target.value })} className={inputCls}><option>Pallet</option><option>Each</option><option>Case</option></select></div>
+                  <div className="col-span-1"><label className={labelCls}>Cond.</label><select value={newItemForm.condition} onChange={e => setNewItemForm({ ...newItemForm, condition: e.target.value })} className={inputCls}><option value="A">A</option><option value="B">B</option><option value="C">C</option></select></div>
+                  <div className="col-span-2"><label className={labelCls}>Location</label><input value={newItemForm.location} onChange={e => setNewItemForm({ ...newItemForm, location: e.target.value })} className={inputCls} placeholder="Bin" /></div>
+                  <div className="col-span-1"><label className={labelCls}>Weight</label><input type="number" value={newItemForm.weight} onChange={e => setNewItemForm({ ...newItemForm, weight: e.target.value })} className={inputCls} placeholder="lbs" /></div>
                   <div className="col-span-1 flex gap-2 items-end">
                     <button onClick={addLineItemToReceipt} disabled={!newItemForm.sku}
                       className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-lg py-2.5 text-xs">Add</button>
@@ -977,11 +735,7 @@ export default function Receiving() {
                         <td className="px-4 py-3 text-white font-medium">{item.quantity || '—'}</td>
                         <td className="px-4 py-3 text-gray-400 text-xs">{item.primaryUnits || 'Pallet'}</td>
                         <td className="px-4 py-3">
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${
-                            item.condition === 'A' ? 'bg-green-500/10 text-green-400' :
-                            item.condition === 'B' ? 'bg-yellow-500/10 text-yellow-400' :
-                            'bg-red-500/10 text-red-400'
-                          }`}>
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${item.condition === 'A' ? 'bg-green-500/10 text-green-400' : item.condition === 'B' ? 'bg-yellow-500/10 text-yellow-400' : 'bg-red-500/10 text-red-400'}`}>
                             Grade {item.condition || 'A'}
                           </span>
                         </td>
@@ -1013,84 +767,41 @@ export default function Receiving() {
           </div>
         )}
 
-        {/* ── Charges ── */}
         {activeTab === 'charges' && (
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-white font-medium">Receipt Charges</h3>
-              {r.status !== 'complete' && (
-                <div className="relative group">
-                  <button className="flex items-center gap-1 text-sm bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg">
-                    <Plus size={13} /> Add Charge <ChevronDown size={12} />
-                  </button>
-                  <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 w-52 hidden group-hover:block">
-                    {CHARGE_TEMPLATES.map(t => (
-                      <button key={t.label} onClick={() => addCharge(t, false)}
-                        className="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700 border-b border-gray-700/50 last:border-0">
-                        <div className="flex justify-between">
-                          <span>{t.label}</span>
-                          <span className="text-gray-500">${t.rate}/{t.unit}</span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="border border-gray-800 rounded-xl overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-800 bg-gray-800/50">
-                    {['Category', 'Charge Label', 'Unit', 'Qty', 'Rate ($)', 'Total ($)', ''].map(h => (
-                      <th key={h} className="text-left px-4 py-3 text-gray-400 font-medium text-xs">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {(r.charges || []).length === 0 ? (
-                    <tr><td colSpan={7} className="text-center py-8 text-gray-500 text-xs">No charges on this receipt</td></tr>
-                  ) : (r.charges || []).map((charge, i) => (
-                    <tr key={i} className="border-b border-gray-800/50">
-                      <td className="px-4 py-3 text-xs text-gray-400">{charge.category}</td>
-                      <td className="px-4 py-3 text-white text-xs">{charge.label}</td>
-                      <td className="px-4 py-3 text-xs text-gray-400">{charge.unit}</td>
-                      <td className="px-4 py-3 text-xs text-gray-300">{charge.qty}</td>
-                      <td className="px-4 py-3 text-xs text-gray-300">${charge.rate}</td>
-                      <td className="px-4 py-3 text-white font-medium text-xs">${Number(charge.total).toFixed(2)}</td>
-                      <td className="px-4 py-3">
-                        {r.status !== 'complete' && (
-                          <button onClick={() => removeCharge(i, false)} className="text-gray-600 hover:text-red-400"><X size={13} /></button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                {(r.charges || []).length > 0 && (
-                  <tfoot>
-                    <tr className="border-t border-gray-700 bg-gray-800/30">
-                      <td colSpan={5} className="px-4 py-3 text-sm font-medium text-gray-400">Total Charges</td>
-                      <td className="px-4 py-3 text-white font-semibold">${chargesTotal(r.charges).toFixed(2)}</td>
-                      <td></td>
-                    </tr>
-                  </tfoot>
-                )}
-              </table>
-            </div>
+            <h3 className="text-white font-medium mb-4">Receipt Charges</h3>
+            <TransactionCharges
+              charges={(r.charges || []).map((c, i) => ({ ...c, id: c.id || i, status: c.status || 'confirmed' }))}
+              onChargesChange={newCharges => {
+                const updated = { ...selectedReceipt, charges: newCharges }
+                setSelectedReceipt(updated)
+                saveReceiptField(selectedReceipt.id, 'charges', newCharges)
+              }}
+              rateCard={clients.find(c => c.id === r.clientId)?.rateCard || []}
+              trigger="on_receive"
+              quantities={{
+                pallets: (r.lineItems || []).reduce((s, i) => s + Number(i.quantity || 0), 0),
+                units: (r.lineItems || []).reduce((s, i) => s + Number(i.quantity || 0), 0),
+                cartons: 0,
+                orders: 1,
+              }}
+              clientName={r.clientName}
+              readOnly={r.status === 'complete'}
+            />
           </div>
         )}
 
-        {/* ── Custom Info ── */}
         {activeTab === 'custom' && (
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
             <h3 className="text-white font-medium mb-4">Custom Receipt Info</h3>
             <div className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
               {[
-                ['Receipt ID',    r.id],
-                ['Status',        sc.label],
-                ['Created',       r.createdAt ? new Date(r.createdAt).toLocaleString() : '—'],
-                ['Completed',     r.completedAt ? new Date(r.completedAt).toLocaleString() : '—'],
+                ['Receipt ID', r.id],
+                ['Status', sc.label],
+                ['Created', r.createdAt ? new Date(r.createdAt).toLocaleString() : '—'],
+                ['Completed', r.completedAt ? new Date(r.completedAt).toLocaleString() : '—'],
                 ['Total Pallets', String(r.totalPallets || 0)],
-                ['Total Weight',  r.totalWeight ? `${r.totalWeight} lbs` : '—'],
+                ['Total Weight', r.totalWeight ? `${r.totalWeight} lbs` : '—'],
               ].map(([label, value]) => (
                 <div key={label}>
                   <span className="text-gray-500 text-xs">{label}</span>
@@ -1101,13 +812,9 @@ export default function Receiving() {
           </div>
         )}
 
-        {/* Barcode Scanner */}
         {showScanner && (
-          <BarcodeScanner
-            title="Scan SKU Barcode"
-            onScan={handleScan}
-            onClose={() => { setShowScanner(false); setScanTarget(null) }}
-          />
+          <BarcodeScanner title="Scan SKU Barcode" onScan={handleScan}
+            onClose={() => { setShowScanner(false); setScanTarget(null) }} />
         )}
       </div>
     )
@@ -1118,14 +825,11 @@ export default function Receiving() {
   // ═══════════════════════════════════════════════════════════════════
   return (
     <div className="flex h-full overflow-hidden">
-
-      {/* Search Sidebar */}
       <div className="w-60 bg-gray-900 border-r border-gray-800 flex flex-col flex-shrink-0 overflow-y-auto">
         <div className="px-4 py-3 border-b border-gray-800">
           <span className="text-white text-xs font-semibold">Search Filters</span>
         </div>
         <div className="px-4 py-3 space-y-4 flex-1">
-
           <div>
             <SectionHeader title="Search by Customer" sectionKey="customer" />
             {!sidebarCollapsed.customer && (
@@ -1141,29 +845,17 @@ export default function Receiving() {
               </div>
             )}
           </div>
-
           <div className="border-t border-gray-800" />
-
           <div>
             <SectionHeader title="Search by Date Range" sectionKey="date" />
             {!sidebarCollapsed.date && (
               <div className="space-y-2 pb-2">
-                <div>
-                  <label className={labelCls}>Arrival From</label>
-                  <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)}
-                    className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-2.5 py-1.5 text-xs focus:outline-none" />
-                </div>
-                <div>
-                  <label className={labelCls}>Arrival To</label>
-                  <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)}
-                    className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-2.5 py-1.5 text-xs focus:outline-none" />
-                </div>
+                <div><label className={labelCls}>Arrival From</label><input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-2.5 py-1.5 text-xs focus:outline-none" /></div>
+                <div><label className={labelCls}>Arrival To</label><input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-2.5 py-1.5 text-xs focus:outline-none" /></div>
               </div>
             )}
           </div>
-
           <div className="border-t border-gray-800" />
-
           <div>
             <SectionHeader title="Receipt Details" sectionKey="details" />
             {!sidebarCollapsed.details && (
@@ -1191,18 +883,14 @@ export default function Receiving() {
             )}
           </div>
         </div>
-
         <div className="px-4 py-3 border-t border-gray-800">
-          <button
-            onClick={() => { setFilterClient(''); setFilterStatus(''); setFilterSearch(''); setFilterDateFrom(''); setFilterDateTo('') }}
-            className="w-full bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs py-2 rounded-lg transition-colors"
-          >
+          <button onClick={() => { setFilterClient(''); setFilterStatus(''); setFilterSearch(''); setFilterDateFrom(''); setFilterDateTo('') }}
+            className="w-full bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs py-2 rounded-lg transition-colors">
             Clear Filters
           </button>
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="p-6 pb-4 flex-shrink-0">
           <div className="flex items-center justify-between mb-4">
@@ -1210,15 +898,12 @@ export default function Receiving() {
               <h2 className="text-xl font-semibold text-white">Receipts</h2>
               <p className="text-sm text-gray-500 mt-0.5">{filtered.length} results</p>
             </div>
-            <button
-              onClick={() => { setView('new'); setActiveTab('transport') }}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
-            >
+            <button onClick={() => { setView('new'); setActiveTab('transport') }}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
               <Plus size={16} /> New Receipt
             </button>
           </div>
         </div>
-
         <div className="flex-1 overflow-auto px-6 pb-6">
           <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
             <table className="w-full text-sm">
@@ -1231,19 +916,13 @@ export default function Receiving() {
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="text-center py-12">
-                      <Package size={32} className="text-gray-700 mx-auto mb-3" />
-                      <p className="text-gray-500 text-sm">No receipts found</p>
-                    </td>
-                  </tr>
+                  <tr><td colSpan={7} className="text-center py-12"><Package size={32} className="text-gray-700 mx-auto mb-3" /><p className="text-gray-500 text-sm">No receipts found</p></td></tr>
                 ) : filtered.map((r, i) => {
                   const sc = statusConfig[r.status] || statusConfig.open
                   const StatusIcon = sc.icon
                   const skuList = (r.lineItems || r.pallets || []).map(p => p.sku).filter(Boolean).join(', ')
                   return (
-                    <tr key={r.id}
-                      onClick={() => { setSelectedReceipt(r); setActiveTab('items'); setView('detail') }}
+                    <tr key={r.id} onClick={() => { setSelectedReceipt(r); setActiveTab('items'); setView('detail') }}
                       className={`border-b border-gray-800/50 hover:bg-gray-800/40 cursor-pointer transition-colors ${i % 2 === 0 ? '' : 'bg-gray-800/10'}`}>
                       <td className="px-4 py-3 text-blue-400 font-mono text-xs font-medium">{r.id.slice(-6).toUpperCase()}</td>
                       <td className="px-4 py-3 text-white text-xs font-medium">{r.referenceId || r.poNumber || '—'}</td>

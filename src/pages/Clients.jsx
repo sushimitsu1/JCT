@@ -4,42 +4,27 @@ import { db } from '../firebase'
 import { Plus, X, Pencil, Trash2, Phone, Mail, ChevronDown, ChevronUp } from 'lucide-react'
 
 const emptyForm = {
-  // Basic
   companyName: '', contactName: '', email: '', phone: '', startDate: '', notes: '',
-
-  // Storage
   storageType: 'per_pallet',
   billingRate: '',
   freeDays: '',
   splitPeriodDay: '15',
   splitRate1st: '',
   splitRate2nd: '',
-
-  // Receiving
   chargeReceivingFee: false,
   receivingFeeType: 'per_pallet',
   receivingFeeRate: '',
-
-  // Outbound
   chargeOutboundFee: false,
   outboundFeeType: 'per_pallet',
   outboundFeeRate: '',
-
-  // Labeling
   chargeLabelingFee: false,
   labelingFeeRate: '',
-
-  // Special charges defaults
   specialLaborRate: '',
-
-  // Materials defaults
   materialsPalletRate: '',
   materialsLabelRate: '',
   materialsBoxSmallRate: '',
   materialsBoxMedRate: '',
   materialsBoxLgRate: '',
-
-  // GL Accounts
   glStorage: '',
   glHandling: '',
   glReceiving: '',
@@ -48,10 +33,21 @@ const emptyForm = {
   glFreight3rd: '',
   glSpecial: '',
   glMaterials: '',
+  rateCard: [],
 }
 
 const inputCls = 'w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500'
 const labelCls = 'text-gray-400 text-xs mb-1 block'
+
+const MODAL_TABS = ['basic', 'storage', 'fees', 'rates', 'gl', 'ratecard']
+const MODAL_TAB_LABELS = {
+  basic: 'Basic Info',
+  storage: 'Storage',
+  fees: 'Fees',
+  rates: 'Default Rates',
+  gl: 'GL Accounts',
+  ratecard: 'Rate Card',
+}
 
 export default function Clients() {
   const [clients, setClients] = useState([])
@@ -119,14 +115,9 @@ export default function Clients() {
     </div>
   )
 
-  const MODAL_TABS = ['basic', 'storage', 'fees', 'rates', 'gl']
-  const MODAL_TAB_LABELS = {
-    basic: 'Basic Info', storage: 'Storage', fees: 'Fees',
-    rates: 'Default Rates', gl: 'GL Accounts'
-  }
-
   return (
     <div className="p-6">
+      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-xl font-semibold text-white">Clients</h2>
@@ -138,10 +129,12 @@ export default function Clients() {
         </button>
       </div>
 
+      {/* Search */}
       <input type="text" placeholder="Search clients..." value={search}
         onChange={e => setSearch(e.target.value)}
         className="w-full max-w-sm bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-4 py-2.5 mb-4 focus:outline-none focus:border-blue-500" />
 
+      {/* Table */}
       <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
         <table className="w-full text-sm">
           <thead>
@@ -150,6 +143,7 @@ export default function Clients() {
               <th className="text-left px-4 py-3 text-gray-400 font-medium">Contact</th>
               <th className="text-left px-4 py-3 text-gray-400 font-medium">Email / Phone</th>
               <th className="text-left px-4 py-3 text-gray-400 font-medium">Storage</th>
+              <th className="text-left px-4 py-3 text-gray-400 font-medium">Rate Card</th>
               <th className="text-left px-4 py-3 text-gray-400 font-medium">Fees</th>
               <th className="text-left px-4 py-3 text-gray-400 font-medium">Since</th>
               <th className="px-4 py-3"></th>
@@ -157,7 +151,7 @@ export default function Clients() {
           </thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={7} className="text-center text-gray-500 py-12">No clients yet</td></tr>
+              <tr><td colSpan={8} className="text-center text-gray-500 py-12">No clients yet</td></tr>
             ) : filtered.map((client, i) => (
               <>
                 <tr key={client.id}
@@ -175,13 +169,18 @@ export default function Clients() {
                       <span className="text-xs px-2 py-0.5 rounded-full border bg-purple-500/10 text-purple-400 border-purple-500/20 w-fit">
                         {client.storageType === 'per_sku' ? 'Per SKU' : `$${client.billingRate || '—'}/pallet`}
                       </span>
-                      {client.freeDays > 0 && (
-                        <span className="text-xs text-gray-500">{client.freeDays} free days</span>
-                      )}
-                      {client.splitRate1st && (
-                        <span className="text-xs text-gray-500">Split: ${client.splitRate1st}/${ client.splitRate2nd}</span>
-                      )}
+                      {client.freeDays > 0 && <span className="text-xs text-gray-500">{client.freeDays} free days</span>}
+                      {client.splitRate1st && <span className="text-xs text-gray-500">Split: ${client.splitRate1st}/${client.splitRate2nd}</span>}
                     </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    {(client.rateCard || []).length > 0 ? (
+                      <span className="text-xs px-2 py-0.5 rounded-full border bg-green-500/10 text-green-400 border-green-500/20">
+                        {client.rateCard.length} charge{client.rateCard.length !== 1 ? 's' : ''}
+                      </span>
+                    ) : (
+                      <span className="text-gray-600 text-xs">None</span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-col gap-1">
@@ -205,9 +204,10 @@ export default function Clients() {
                     </div>
                   </td>
                 </tr>
+
                 {expandedId === client.id && (
                   <tr key={`${client.id}-exp`} className="bg-gray-800/30">
-                    <td colSpan={7} className="px-6 py-4">
+                    <td colSpan={8} className="px-6 py-4">
                       <div className="grid grid-cols-4 gap-4 text-xs mb-3">
                         <div>
                           <p className="text-gray-500 mb-1 font-medium uppercase tracking-wide">Storage</p>
@@ -222,10 +222,16 @@ export default function Clients() {
                           <p className="text-white">{client.chargeLabelingFee ? `Label $${client.labelingFeeRate}/unit` : 'No labeling fee'}</p>
                         </div>
                         <div>
-                          <p className="text-gray-500 mb-1 font-medium uppercase tracking-wide">Default Rates</p>
-                          {client.specialLaborRate && <p className="text-white">Labor: ${client.specialLaborRate}/hr</p>}
-                          {client.materialsPalletRate && <p className="text-white">Pallet: ${client.materialsPalletRate}</p>}
-                          {client.materialsLabelRate && <p className="text-white">Label: ${client.materialsLabelRate}</p>}
+                          <p className="text-gray-500 mb-1 font-medium uppercase tracking-wide">Rate Card</p>
+                          {(client.rateCard || []).length === 0
+                            ? <p className="text-gray-600">Not configured</p>
+                            : (client.rateCard || []).slice(0, 4).map((r, i) => (
+                              <p key={i} className="text-white">{r.label}: <span className="text-gray-400">${r.rate}/{r.unit}</span></p>
+                            ))
+                          }
+                          {(client.rateCard || []).length > 4 && (
+                            <p className="text-gray-500">+{client.rateCard.length - 4} more</p>
+                          )}
                         </div>
                         <div>
                           <p className="text-gray-500 mb-1 font-medium uppercase tracking-wide">GL Accounts</p>
@@ -233,7 +239,7 @@ export default function Clients() {
                           {client.glHandling && <p className="text-yellow-400 font-mono">Handling: {client.glHandling}</p>}
                           {client.glReceiving && <p className="text-yellow-400 font-mono">Receiving: {client.glReceiving}</p>}
                           {client.glOutbound && <p className="text-yellow-400 font-mono">Outbound: {client.glOutbound}</p>}
-                          {!client.glStorage && !client.glHandling && !client.glReceiving && <p className="text-gray-600">None configured</p>}
+                          {!client.glStorage && !client.glHandling && <p className="text-gray-600">None configured</p>}
                         </div>
                       </div>
                       {client.notes && <p className="text-gray-400 text-xs border-t border-gray-700 pt-3">{client.notes}</p>}
@@ -255,11 +261,11 @@ export default function Clients() {
               <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-white"><X size={18}/></button>
             </div>
 
-            {/* Modal tabs */}
-            <div className="flex gap-0 border-b border-gray-800 px-6">
+            {/* Modal tab bar */}
+            <div className="flex gap-0 border-b border-gray-800 px-6 overflow-x-auto">
               {MODAL_TABS.map(t => (
                 <button key={t} onClick={() => setModalTab(t)}
-                  className={`px-4 py-3 text-xs font-medium transition-colors border-b-2 -mb-px ${
+                  className={`px-4 py-3 text-xs font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
                     modalTab === t ? 'text-blue-400 border-blue-500' : 'text-gray-500 border-transparent hover:text-gray-300'
                   }`}>
                   {MODAL_TAB_LABELS[t]}
@@ -315,7 +321,6 @@ export default function Clients() {
                       <input type="number" value={form.billingRate} onChange={e => set('billingRate', e.target.value)} className={inputCls} placeholder="25.00"/>
                     </div>
                   )}
-
                   <div className="border border-gray-700 rounded-xl p-4 space-y-3">
                     <p className="text-white text-sm font-medium">Free Days</p>
                     <div>
@@ -323,7 +328,6 @@ export default function Clients() {
                       <input type="number" value={form.freeDays} onChange={e => set('freeDays', e.target.value)} className={inputCls} placeholder="0"/>
                     </div>
                   </div>
-
                   <div className="border border-gray-700 rounded-xl p-4 space-y-3">
                     <p className="text-white text-sm font-medium">Split Period Storage</p>
                     <p className="text-gray-500 text-xs">Charge a different rate depending on which half of the month inventory is received.</p>
@@ -365,7 +369,6 @@ export default function Clients() {
                       </div>
                     </div>
                   </FeeSection>
-
                   <FeeSection title="Outbound / Handling Fee" enabledKey="chargeOutboundFee">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
@@ -382,7 +385,6 @@ export default function Clients() {
                       </div>
                     </div>
                   </FeeSection>
-
                   <FeeSection title="Labeling / Special Projects" enabledKey="chargeLabelingFee">
                     <div>
                       <label className={labelCls}>Default Rate ($ per unit)</label>
@@ -396,7 +398,6 @@ export default function Clients() {
               {modalTab === 'rates' && (
                 <div className="space-y-4">
                   <p className="text-gray-400 text-xs">These rates auto-fill when adding charges in the Billing Wizard.</p>
-
                   <div className="border border-gray-700 rounded-xl p-4 space-y-3">
                     <p className="text-white text-sm font-medium">Special Charges</p>
                     <div>
@@ -404,7 +405,6 @@ export default function Clients() {
                       <input type="number" value={form.specialLaborRate} onChange={e => set('specialLaborRate', e.target.value)} className={inputCls} placeholder="45.00"/>
                     </div>
                   </div>
-
                   <div className="border border-gray-700 rounded-xl p-4 space-y-3">
                     <p className="text-white text-sm font-medium">Materials</p>
                     <div className="grid grid-cols-2 gap-3">
@@ -439,27 +439,131 @@ export default function Clients() {
                   <p className="text-gray-400 text-xs">GL account numbers appear on invoice line items and Excel exports for accounting integration.</p>
                   <div className="grid grid-cols-2 gap-4">
                     {[
-                      ['glStorage',       'Storage'],
-                      ['glHandling',      'Handling'],
-                      ['glReceiving',     'Receiving'],
-                      ['glOutbound',      'Outbound / Shipping'],
-                      ['glFreightPrepaid','Freight Prepaid'],
-                      ['glFreight3rd',    'Freight 3rd Party'],
-                      ['glSpecial',       'Special Charges'],
-                      ['glMaterials',     'Materials'],
+                      ['glStorage',        'Storage'],
+                      ['glHandling',       'Handling'],
+                      ['glReceiving',      'Receiving'],
+                      ['glOutbound',       'Outbound / Shipping'],
+                      ['glFreightPrepaid', 'Freight Prepaid'],
+                      ['glFreight3rd',     'Freight 3rd Party'],
+                      ['glSpecial',        'Special Charges'],
+                      ['glMaterials',      'Materials'],
                     ].map(([key, label]) => (
                       <div key={key}>
                         <label className={labelCls}>{label}</label>
-                        <input value={form[key]} onChange={e => set(key, e.target.value)}
-                          className={inputCls} placeholder="e.g. 4010"/>
+                        <input value={form[key]} onChange={e => set(key, e.target.value)} className={inputCls} placeholder="e.g. 4010"/>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
 
+              {/* Rate Card */}
+              {modalTab === 'ratecard' && (
+                <div className="space-y-3">
+                  <p className="text-gray-400 text-xs">
+                    Define every agreed service and rate for this client. Charges tagged
+                    "On receive" or "On ship" auto-calculate when a receipt or order is
+                    confirmed. "Manual only" charges appear in the Add Charge dropdown.
+                  </p>
+
+                  {/* Column headers */}
+                  <div className="grid grid-cols-12 gap-2 px-1 text-gray-500 text-xs">
+                    <div className="col-span-3">Label</div>
+                    <div className="col-span-2">Category</div>
+                    <div className="col-span-1">Unit</div>
+                    <div className="col-span-2">Rate ($)</div>
+                    <div className="col-span-2">GL Acct</div>
+                    <div className="col-span-1">Trigger</div>
+                    <div className="col-span-1"></div>
+                  </div>
+
+                  <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                    {(form.rateCard || []).length === 0 && (
+                      <p className="text-gray-600 text-xs text-center py-6">
+                        No rate card rows yet — click Add Row below
+                      </p>
+                    )}
+                    {(form.rateCard || []).map((row, i) => (
+                      <div key={i} className="grid grid-cols-12 gap-2 items-center">
+                        <input value={row.label} onChange={e => {
+                          const rc = [...form.rateCard]
+                          rc[i] = { ...rc[i], label: e.target.value }
+                          set('rateCard', rc)
+                        }} className={`col-span-3 ${inputCls}`} placeholder="e.g. Pick & Pack"/>
+
+                        <select value={row.category} onChange={e => {
+                          const rc = [...form.rateCard]
+                          rc[i] = { ...rc[i], category: e.target.value }
+                          set('rateCard', rc)
+                        }} className={`col-span-2 ${inputCls}`}>
+                          <option>Handling</option>
+                          <option>Storage</option>
+                          <option>Freight Prepaid</option>
+                          <option>Freight 3rd Party</option>
+                          <option>Special</option>
+                          <option>Materials</option>
+                        </select>
+
+                        <select value={row.unit} onChange={e => {
+                          const rc = [...form.rateCard]
+                          rc[i] = { ...rc[i], unit: e.target.value }
+                          set('rateCard', rc)
+                        }} className={`col-span-1 ${inputCls}`}>
+                          <option>pallet</option>
+                          <option>unit</option>
+                          <option>carton</option>
+                          <option>order</option>
+                          <option>receipt</option>
+                          <option>hour</option>
+                          <option>label</option>
+                          <option>box</option>
+                        </select>
+
+                        <input type="number" value={row.rate} onChange={e => {
+                          const rc = [...form.rateCard]
+                          rc[i] = { ...rc[i], rate: e.target.value }
+                          set('rateCard', rc)
+                        }} className={`col-span-2 ${inputCls}`} placeholder="0.00"/>
+
+                        <input value={row.glCode || ''} onChange={e => {
+                          const rc = [...form.rateCard]
+                          rc[i] = { ...rc[i], glCode: e.target.value }
+                          set('rateCard', rc)
+                        }} className={`col-span-2 ${inputCls}`} placeholder="e.g. 4010"/>
+
+                        <select value={row.trigger} onChange={e => {
+                          const rc = [...form.rateCard]
+                          rc[i] = { ...rc[i], trigger: e.target.value }
+                          set('rateCard', rc)
+                        }} className={`col-span-1 ${inputCls}`}>
+                          <option value="on_receive">On receive</option>
+                          <option value="on_ship">On ship</option>
+                          <option value="both">Both</option>
+                          <option value="manual">Manual only</option>
+                        </select>
+
+                        <button onClick={() => set('rateCard', form.rateCard.filter((_, idx) => idx !== i))}
+                          className="col-span-1 text-gray-600 hover:text-red-400 flex justify-center">
+                          <X size={13}/>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button onClick={() => set('rateCard', [...(form.rateCard || []), {
+                    id: Date.now(),
+                    label: '', category: 'Handling', unit: 'pallet',
+                    rate: '', glCode: '', trigger: 'on_ship'
+                  }])}
+                    className="flex items-center gap-1.5 text-sm text-blue-400 hover:text-blue-300 border border-dashed border-blue-500/30 hover:border-blue-500/60 rounded-lg px-4 py-2 w-full justify-center transition-colors">
+                    <Plus size={13}/> Add Rate Card Row
+                  </button>
+                </div>
+              )}
+
             </div>
 
+            {/* Footer */}
             <div className="px-6 py-4 border-t border-gray-800 flex justify-end gap-3">
               <button onClick={() => setShowModal(false)} className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors">Cancel</button>
               <button onClick={handleSubmit} disabled={loading || !form.companyName.trim()}
