@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import {
   collection, addDoc, getDocs, doc, updateDoc,
   query, orderBy
@@ -16,6 +16,12 @@ const generatePalletId = () => {
   const now = new Date()
   const date = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`
   return `${date}-${Math.floor(Math.random()*9000)+1000}`
+}
+
+const genTransactionId = () => {
+  const now = new Date()
+  const date = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`
+  return `REC-${date}-${Math.floor(Math.random()*9000)+1000}`
 }
 
 const statusConfig = {
@@ -140,6 +146,7 @@ export default function Receiving() {
       const totalCharges = confirmedCharges.reduce((s, c) => s + Number(c.total || 0), 0)
 
       const receiptData = {
+        transactionId: genTransactionId(),
         clientId: form.clientId,
         clientName: form.clientName,
         referenceId: form.referenceId,
@@ -303,9 +310,9 @@ export default function Receiving() {
     return true
   })
 
-  // ═══════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // NEW RECEIPT VIEW
-  // ═══════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   if (view === 'new') {
     return (
       <div className="p-6">
@@ -321,7 +328,7 @@ export default function Receiving() {
           <div className="flex gap-3">
             <button onClick={() => { setScanTarget({ type: 'form', index: 0 }); setShowScanner(true) }}
               className="flex items-center gap-2 px-4 py-2 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors">
-              📷 Scan SKU
+              ðŸ“· Scan SKU
             </button>
             <button onClick={() => { setView('list'); resetForm() }}
               className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-700 rounded-lg">
@@ -412,7 +419,7 @@ export default function Receiving() {
               <div className="flex gap-2">
                 <button onClick={() => { setScanTarget({ type: 'form', index: form.lineItems.length - 1 }); setShowScanner(true) }}
                   className="flex items-center gap-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg">
-                  📷 Scan
+                  ðŸ“· Scan
                 </button>
                 <button onClick={addFormLineItem}
                   className="flex items-center gap-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg">
@@ -447,7 +454,7 @@ export default function Receiving() {
                     </div>
                     <button onClick={() => { setScanTarget({ type: 'form', index: i }); setShowScanner(true) }}
                       className="text-blue-400 hover:text-blue-300 p-1 flex-shrink-0" title="Scan barcode">
-                      📷
+                      ðŸ“·
                     </button>
                   </div>
                   {skuDropdown === i && filteredSkus(form.clientId).length > 0 && (
@@ -520,9 +527,9 @@ export default function Receiving() {
     )
   }
 
-  // ═══════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // DETAIL VIEW
-  // ═══════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   if (view === 'detail' && selectedReceipt) {
     const r = receipts.find(x => x.id === selectedReceipt.id) || selectedReceipt
     const sc = statusConfig[r.status] || statusConfig.open
@@ -578,7 +585,7 @@ export default function Receiving() {
           {[
             { label: 'Customer',     value: r.clientName },
             { label: 'Reference #',  value: r.referenceId || '—' },
-            { label: 'Transaction',  value: r.id.slice(-6).toUpperCase() },
+            { label: 'Transaction',  value: r.transactionId || r.id.slice(-6).toUpperCase() },
             { label: 'Arrival Date', value: r.arrivalDate ? new Date(r.arrivalDate).toLocaleDateString() : '—' },
             { label: 'Total Pallets',value: String(r.totalPallets || r.lineItems?.length || 0) },
             { label: 'Total Charges',value: `$${Number(r.totalCharges || 0).toFixed(2)}` },
@@ -657,7 +664,7 @@ export default function Receiving() {
                   <>
                     <button onClick={() => { setScanTarget({ type: 'detail' }); setShowScanner(true) }}
                       className="flex items-center gap-1 text-sm bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg">
-                      📷 Scan
+                      ðŸ“· Scan
                     </button>
                     <button onClick={() => { setShowAddItem(!showAddItem); setNewItemForm({ ...emptyLineItem }) }}
                       className="flex items-center gap-1 text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg">
@@ -830,9 +837,9 @@ export default function Receiving() {
     )
   }
 
-  // ═══════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // LIST VIEW
-  // ═══════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   return (
     <div className="flex h-full overflow-hidden">
       <div className="w-60 bg-gray-900 border-r border-gray-800 flex flex-col flex-shrink-0 overflow-y-auto">
@@ -934,7 +941,7 @@ export default function Receiving() {
                   return (
                     <tr key={r.id} onClick={() => { setSelectedReceipt(r); setActiveTab('items'); setView('detail') }}
                       className={`border-b border-gray-800/50 hover:bg-gray-800/40 cursor-pointer transition-colors ${i % 2 === 0 ? '' : 'bg-gray-800/10'}`}>
-                      <td className="px-4 py-3 text-blue-400 font-mono text-xs font-medium">{r.id.slice(-6).toUpperCase()}</td>
+                      <td className="px-4 py-3 text-blue-400 font-mono text-xs font-medium">{r.transactionId || r.id.slice(-6).toUpperCase()}</td>
                       <td className="px-4 py-3 text-white text-xs font-medium">{r.referenceId || r.poNumber || '—'}</td>
                       <td className="px-4 py-3 text-gray-300 text-xs">{r.createdAt ? new Date(r.createdAt).toLocaleDateString() : '—'}</td>
                       <td className="px-4 py-3 text-white text-sm font-medium">{r.clientName}</td>

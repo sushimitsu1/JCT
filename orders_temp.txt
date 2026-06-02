@@ -209,7 +209,8 @@ export default function Orders() {
     }
   }
 
-  const openNew = () => { setForm(emptyForm); setSkuSearch({}); setEditOrderId(null); setActiveTab('details'); setView('new') }
+  const genOrderNumber = () => { const n = new Date(); return `ORD-```-`` }
+  const openNew = () => { setForm({ ...emptyForm, orderNumber: genOrderNumber() }); setSkuSearch({}); setEditOrderId(null); setActiveTab('details'); setView('new') }
 
   const openEdit = (order) => {
     const skuSearchMap = {}

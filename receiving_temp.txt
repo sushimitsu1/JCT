@@ -50,7 +50,7 @@ export default function Receiving() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState({})
 
   const [form, setForm] = useState({
-    clientId: '', clientName: '', referenceId: '', poNumber: '',
+    clientId: '', clientName: '', referenceId: genReferenceId(), poNumber: '',
     arrivalDate: new Date().toISOString().slice(0,16),
     expectedDate: '', notes: '',
     carrier: '', trackingNumber: '', bolNumber: '',
@@ -196,7 +196,7 @@ export default function Receiving() {
   }
 
   const resetForm = () => setForm({
-    clientId: '', clientName: '', referenceId: '', poNumber: '',
+    clientId: '', clientName: '', referenceId: genReferenceId(), poNumber: '',
     arrivalDate: new Date().toISOString().slice(0,16),
     expectedDate: '', notes: '', carrier: '', trackingNumber: '',
     bolNumber: '', truckNumber: '', sealNumber: '', driverName: '',
