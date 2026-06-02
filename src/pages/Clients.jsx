@@ -455,7 +455,7 @@ export default function Clients() {
                           <option>order</option><option>receipt</option><option>hour</option>
                           <option>label</option><option>box</option>
                         </select>
-                        <input type="number" value={row.rate} onChange={e => updateRateCard(i,'rate',e.target.value)}
+                        <input type="text" inputMode="decimal" value={row.rate} onChange={e => updateRateCard(i,'rate',e.target.value)}
                           className={inpSm} placeholder="0.00"/>
                         <input value={row.glCode||''} onChange={e => updateRateCard(i,'glCode',e.target.value)}
                           className={inpSm} placeholder="4010"/>

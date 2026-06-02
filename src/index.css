@@ -1,141 +1,74 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-* { transition: background-color 0.2s, border-color 0.2s, color 0.1s; }
-
-/* ===== Dark Theme (default) ===== */
-:root {
-  --bg-main: #030712;
-  --bg-card: #111827;
-  --bg-input: #1F2937;
-  --bg-hover: #1F2937;
-  --border: #1F2937;
-  --border-subtle: #374151;
-  --text: #F9FAFB;
-  --text-muted: #9CA3AF;
-  --text-subtle: #6B7280;
+*, *::before, *::after {
+  font-family: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif !important;
+  -webkit-font-smoothing: antialiased;
+  box-sizing: border-box;
 }
 
-/* ===== Brand Theme ===== */
-body.theme-brand {
-  --bg-main: #F8FAFC;
-  --bg-card: #FFFFFF;
-  --bg-input: #F8FAFC;
-  --bg-hover: #F1F5F9;
-  --border: #E5E7EB;
-  --border-subtle: #E5E7EB;
-  --text: #1B2A4A;
-  --text-muted: #374151;
-  --text-subtle: #64748B;
+code, .font-mono, [class*="font-mono"] {
+  font-family: 'IBM Plex Mono', 'Courier New', monospace !important;
 }
 
-/* ===== Warm Green Theme ===== */
-body.theme-warm {
-  --bg-main: #F9FAFB;
-  --bg-card: #FFFFFF;
-  --bg-input: #F9FAFB;
-  --bg-hover: #F3F4F6;
-  --border: #E5E7EB;
-  --border-subtle: #E5E7EB;
-  --text: #111827;
-  --text-muted: #374151;
-  --text-subtle: #6B7280;
+table {
+  font-size: 13px;
+  letter-spacing: -0.01em;
 }
 
-/* ===== Apply CSS variables to Tailwind classes ===== */
-.bg-gray-950 { background-color: var(--bg-main) !important; }
-.bg-gray-900 { background-color: var(--bg-card) !important; }
-.bg-gray-800 { background-color: var(--bg-input) !important; }
-.bg-gray-800\/20 { background-color: var(--bg-hover) !important; }
-.bg-gray-800\/40 { background-color: var(--bg-hover) !important; }
-.hover\:bg-gray-800:hover { background-color: var(--bg-hover) !important; }
-.hover\:bg-gray-800\/40:hover { background-color: var(--bg-hover) !important; }
-
-.border-gray-800 { border-color: var(--border) !important; }
-.border-gray-800\/50 { border-color: var(--border) !important; }
-.border-gray-700 { border-color: var(--border-subtle) !important; }
-.divide-gray-800 > * + * { border-color: var(--border) !important; }
-
-.text-white { color: var(--text) !important; }
-.text-gray-300 { color: var(--text-muted) !important; }
-.text-gray-400 { color: var(--text-subtle) !important; }
-.text-gray-500 { color: var(--text-subtle) !important; }
-.text-gray-600 { color: var(--text-subtle) !important; }
-
-/* Keep status colors vibrant on light themes */
-body.theme-brand .text-green-400,
-body.theme-warm .text-green-400 { color: #16A34A !important; }
-body.theme-brand .text-yellow-400,
-body.theme-warm .text-yellow-400 { color: #CA8A04 !important; }
-body.theme-brand .text-red-400,
-body.theme-warm .text-red-400 { color: #DC2626 !important; }
-body.theme-brand .text-blue-400,
-body.theme-warm .text-blue-400 { color: #2563EB !important; }
-
-/* Input fields */
-input, select, textarea {
-  background-color: var(--bg-input) !important;
-  border-color: var(--border-subtle) !important;
-  color: var(--text) !important;
+th {
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  font-size: 11px;
 }
-input::placeholder, textarea::placeholder { color: var(--text-subtle) !important; }
 
-/* Hide scrollbar on tab bar */
-.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-.scrollbar-hide::-webkit-scrollbar { display: none; }
+h1, h2, h3, h4 {
+  letter-spacing: -0.02em;
+}
+/* Theme-aware overrides — surfaces only, not text */
+.bg-gray-900 {
+  background-color: var(--theme-surface) !important;
+}
+.bg-gray-950 {
+  background-color: var(--theme-bg) !important;
+}
+.bg-gray-800 {
+  background-color: var(--theme-surface) !important;
+}
+.border-gray-800 {
+  border-color: var(--theme-border) !important;
+}
+.border-gray-700 {
+  border-color: var(--theme-border) !important;
+}
 
-/* ===== MOBILE RESPONSIVE ===== */
+/* On light themes, ensure table text is readable */
+.theme-brand .text-white,
+.theme-warm .text-white {
+  color: #1B2A4A !important;
+}
 
-/* Desktop sidebar — hide on mobile */
-.desktop-sidebar { display: flex; }
-.mobile-hamburger { display: none; }
-.mobile-page-title { display: none; }
-.tab-label { display: inline; }
+.theme-brand .text-gray-300,
+.theme-warm .text-gray-300 {
+  color: #374151 !important;
+}
 
-@media (max-width: 768px) {
-  /* Hide desktop sidebar, show hamburger */
-  .desktop-sidebar { display: none !important; }
-  .mobile-hamburger { display: flex !important; }
-  .mobile-page-title { display: block !important; }
-  .tab-label { display: none !important; }
+.theme-brand .text-gray-400,
+.theme-warm .text-gray-400 {
+  color: #4B5563 !important;
+}
 
-  /* Tables scroll horizontally */
-  table {
-    display: block;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    white-space: nowrap;
-  }
+.theme-brand .text-gray-500,
+.theme-warm .text-gray-500 {
+  color: #6B7280 !important;
+}
 
-  /* Modals become full-screen bottom sheets */
-  .fixed.inset-0 > div[class*="max-w"] {
-    position: fixed !important;
-    bottom: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    top: auto !important;
-    max-width: 100% !important;
-    width: 100% !important;
-    max-height: 90vh !important;
-    border-radius: 16px 16px 0 0 !important;
-    margin: 0 !important;
-  }
-
-  /* Grid columns collapse on mobile */
-  .grid-cols-3,
-  .grid-cols-4,
-  .grid-cols-5 { grid-template-columns: 1fr 1fr !important; }
-  .grid-cols-6 { grid-template-columns: 1fr 1fr !important; }
-
-  /* Reduce padding on mobile */
-  .p-6 { padding: 12px !important; }
-  .px-6 { padding-left: 12px !important; padding-right: 12px !important; }
-
-  /* Larger touch targets */
-  button { min-height: 36px; }
-
-  /* Hide scrollbar on tab bar */
-  .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-  .scrollbar-hide::-webkit-scrollbar { display: none; }
+.theme-brand .bg-gray-800\/20,
+.theme-brand .bg-gray-800\/10,
+.theme-warm .bg-gray-800\/20,
+.theme-warm .bg-gray-800\/10 {
+  background-color: #F3F4F6 !important;
 }

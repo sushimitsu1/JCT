@@ -141,11 +141,11 @@ export default function TransactionCharges({
           </div>
           <div className="relative">
             <button onClick={() => setShowPresets(!showPresets)}
-              className="flex items-center gap-1 text-sm bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg">
+              className="flex items-center gap-1 text-sm bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 border border-blue-600/20 px-3 py-1.5 rounded-lg transition-colors">
               <Plus size={13} /> Add Charge <ChevronDown size={12} className={showPresets ? 'rotate-180' : ''} />
             </button>
             {showPresets && (
-              <div className="absolute right-0 top-full mt-1 bg-gray-800 border border-gray-700 rounded-xl shadow-xl z-50 w-64 py-1">
+              <div className="absolute right-0 top-full mt-1 bg-gray-900 border border-gray-700 rounded-xl shadow-xl z-50 w-64 py-1" style={{backgroundColor:'#111827'}}>
                 {rateCard?.filter(r => r.trigger === 'manual' || !r.trigger).map(r => (
                   <button key={r.id || r.label} onClick={() => addManualCharge(r)}
                     className="w-full text-left px-3 py-2 text-xs text-gray-300 hover:bg-gray-700 border-b border-gray-700/30 last:border-0">
