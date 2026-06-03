@@ -20,18 +20,19 @@ const inputCls = 'w-full bg-gray-800 border border-gray-700 text-white rounded-l
 
 const categoryBadge = (cat) => {
   const map = {
-    storage:        'bg-purple-500/10 text-purple-400 border-purple-500/20',
-    receiving:      'bg-blue-500/10 text-blue-400 border-blue-500/20',
-    outbound:       'bg-orange-500/10 text-orange-400 border-orange-500/20',
-    labeling:       'bg-pink-500/10 text-pink-400 border-pink-500/20',
-    handling:       'bg-teal-500/10 text-teal-400 border-teal-500/20',
-    freight_prepaid:'bg-sky-500/10 text-sky-400 border-sky-500/20',
-    freight_3rd:    'bg-indigo-500/10 text-indigo-400 border-indigo-500/20',
-    special:        'bg-red-500/10 text-red-400 border-red-500/20',
-    materials:      'bg-amber-500/10 text-amber-400 border-amber-500/20',
-    manual:         'bg-gray-500/10 text-gray-400 border-gray-500/20',
+    storage:         'bg-purple-500/10 text-purple-400 border-purple-500/20',
+    receiving:       'bg-blue-500/10 text-blue-400 border-blue-500/20',
+    outbound:        'bg-orange-500/10 text-orange-400 border-orange-500/20',
+    labeling:        'bg-pink-500/10 text-pink-400 border-pink-500/20',
+    handling:        'bg-teal-500/10 text-teal-400 border-teal-500/20',
+    freight_prepaid: 'bg-sky-500/10 text-sky-400 border-sky-500/20',
+    freight_3rd:     'bg-indigo-500/10 text-indigo-400 border-indigo-500/20',
+    special:         'bg-red-500/10 text-red-400 border-red-500/20',
+    materials:       'bg-amber-500/10 text-amber-400 border-amber-500/20',
+    transaction:     'bg-green-500/10 text-green-400 border-green-500/20',
+    manual:          'bg-gray-500/10 text-gray-400 border-gray-500/20',
   }
-  return map[cat] || map.manual
+  return map[cat?.toLowerCase()] || map.manual
 }
 
 export default function Billing() {
@@ -47,7 +48,7 @@ export default function Billing() {
   const [selectedYear, setSelectedYear]     = useState(new Date().getFullYear())
   const [autoLines, setAutoLines]       = useState([])
   const [wizardLines, setWizardLines]   = useState([])
-  const [invoiceTab, setInvoiceTab]     = useState('auto')  // 'auto' | 'wizard'
+  const [invoiceTab, setInvoiceTab]     = useState('auto')
   const [loading, setLoading]           = useState(false)
   const [calculating, setCalculating]   = useState(false)
   const [expandedId, setExpandedId]     = useState(null)
@@ -91,7 +92,6 @@ export default function Billing() {
     const clientInventory = inventory.filter(i =>
       i.clientId === clientId && (i.status || 'available') === 'available'
     )
-
     const catalogBySku = {}
     catalogItems.filter(i => i.clientId === clientId)
       .forEach(item => { catalogBySku[item.sku] = item })
@@ -116,7 +116,6 @@ export default function Billing() {
       const useSkuRate = client.storageType === 'per_sku' && catalog?.storageRate
       let charge = 0, rate, qty, unit, rateType
 
-      // Determine base rate — check split period
       const receivedDate = group.receivedDate ? new Date(group.receivedDate) : null
       const receivedDay  = receivedDate ? receivedDate.getDate() : null
       let usingSplit = false
@@ -135,12 +134,9 @@ export default function Billing() {
           charge = Number(catalog.minMonthlyCharge)
       } else {
         qty = group.pallets; unit = 'pallet'; rateType = 'per_pallet'
-        // Split period logic
         if (client.splitRate1st && client.splitRate2nd && receivedDay) {
           usingSplit = true
-          rate = receivedDay <= splitDay
-            ? Number(client.splitRate1st)
-            : Number(client.splitRate2nd)
+          rate = receivedDay <= splitDay ? Number(client.splitRate1st) : Number(client.splitRate2nd)
         } else {
           rate = Number(client.billingRate || 25)
         }
@@ -148,23 +144,18 @@ export default function Billing() {
         skusWithoutCatalog++
       }
 
-      // Free days: skip charge if within free days window
       if (freeDays > 0 && receivedDate) {
-        const today = new Date()
-        const daysSinceReceived = Math.floor((today - receivedDate) / (1000 * 60 * 60 * 24))
-        if (daysSinceReceived < freeDays) {
-          charge = 0
-        }
+        const daysSinceReceived = Math.floor((new Date() - receivedDate) / (1000 * 60 * 60 * 24))
+        if (daysSinceReceived < freeDays) charge = 0
       }
 
-      const glCode = client.glStorage || ''
       lines.push({
         sku: group.sku,
         description: `Storage — ${group.sku}${group.description ? ` (${group.description})` : ''}${usingSplit ? ` [Split ${receivedDay <= splitDay ? '1st' : '2nd'} half]` : ''} — ${months[mon]} ${yr}`,
         quantity: qty, unit, rate,
         amount: Number(charge.toFixed(2)),
         rateType, pallets: group.pallets, units: group.units,
-        category: 'storage', glCode
+        category: 'storage', glCode: client.glStorage || ''
       })
     })
 
@@ -174,7 +165,7 @@ export default function Billing() {
       const feeType = client.receivingFeeType || 'per_pallet'
       const monthReceipts = receipts.filter(r => {
         if (r.clientId !== clientId) return false
-        const d = new Date(r.receivedDate || r.createdAt)
+        const d = new Date(r.receivedDate || r.arrivalDate || r.createdAt)
         return d.getMonth() === mon && d.getFullYear() === yr
       })
       if (monthReceipts.length > 0) {
@@ -223,11 +214,65 @@ export default function Billing() {
       }
     }
 
+    // ── 4. CONFIRMED TRANSACTION CHARGES ─────────────────────────
+    const txReceipts = receipts.filter(r => {
+      if (r.clientId !== clientId) return false
+      const d = new Date(r.receivedDate || r.arrivalDate || r.createdAt)
+      return d.getMonth() === mon && d.getFullYear() === yr
+    })
+    for (const receipt of txReceipts) {
+      const confirmed = (receipt.charges || []).filter(c =>
+        c.status === 'confirmed' || c.status === 'adjusted'
+      )
+      for (const charge of confirmed) {
+        lines.push({
+          description: `${charge.label} — Receipt ${receipt.referenceId || receipt.id.slice(-6).toUpperCase()}`,
+          quantity: charge.qty || 1,
+          unit: charge.unit || '',
+          rate: Number(charge.rate || 0),
+          amount: Number(charge.total || charge.amount || 0),
+          category: 'transaction',
+          glCode: charge.glCode || '',
+          origin: 'Transaction',
+          sourceType: 'receipt',
+          sourceId: receipt.id,
+        })
+      }
+    }
+
+    const txOrders = orders.filter(o => {
+      if (o.clientId !== clientId || o.status !== 'shipped') return false
+      const d = new Date(o.shippedDate || o.updatedAt || o.createdAt)
+      return d.getMonth() === mon && d.getFullYear() === yr
+    })
+    for (const order of txOrders) {
+      const confirmed = (order.charges || []).filter(c =>
+        c.status === 'confirmed' || c.status === 'adjusted'
+      )
+      for (const charge of confirmed) {
+        lines.push({
+          description: `${charge.label} — Order ${order.orderNumber || order.id.slice(-6).toUpperCase()}`,
+          quantity: charge.qty || 1,
+          unit: charge.unit || '',
+          rate: Number(charge.rate || 0),
+          amount: Number(charge.total || charge.amount || 0),
+          category: 'transaction',
+          glCode: charge.glCode || '',
+          origin: 'Transaction',
+          sourceType: 'order',
+          sourceId: order.id,
+        })
+      }
+    }
+
+    const transactionChargeCount = lines.filter(l => l.origin === 'Transaction').length
+
     setCalcSummary({
       totalPallets: clientInventory.reduce((s, i) => s + Number(i.pallets || 1), 0),
       skusWithCatalog, skusWithoutCatalog,
       skuCount: Object.keys(skuGroups).length,
-      freeDays, hasSplit: !!(client.splitRate1st && client.splitRate2nd)
+      freeDays, hasSplit: !!(client.splitRate1st && client.splitRate2nd),
+      transactionChargeCount
     })
 
     setAutoLines(lines)
@@ -388,7 +433,6 @@ export default function Billing() {
         </div>
       )}
 
-      {/* Summary cards */}
       <div className="grid grid-cols-4 gap-4 mb-6">
         {[
           { label: 'Total Invoiced', value: `$${totalRevenue.toLocaleString()}`, color: 'text-white' },
@@ -403,7 +447,6 @@ export default function Billing() {
         ))}
       </div>
 
-      {/* Invoice list */}
       <div className="space-y-3">
         {invoices.length === 0 ? (
           <div className="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center">
@@ -488,7 +531,6 @@ export default function Billing() {
             </div>
 
             <div className="px-6 py-4 space-y-4">
-              {/* Client + Period */}
               <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className="text-gray-400 text-xs mb-1 block">Client *</label>
@@ -513,7 +555,6 @@ export default function Billing() {
                 </div>
               </div>
 
-              {/* Client billing profile summary */}
               {selectedClientObj && (
                 <div className="bg-gray-800/50 border border-gray-700 rounded-xl px-4 py-3 grid grid-cols-5 gap-3 text-xs">
                   <div>
@@ -549,7 +590,6 @@ export default function Billing() {
                 </div>
               )}
 
-              {/* Invoice tabs */}
               {selectedClient && (
                 <div className="flex gap-0 border-b border-gray-800">
                   {[['auto','Auto-Calculate'],['wizard','Billing Wizard']].map(([id,label]) => (
@@ -569,7 +609,6 @@ export default function Billing() {
                 </div>
               )}
 
-              {/* AUTO-CALCULATE TAB */}
               {invoiceTab === 'auto' && (
                 <>
                   {calcSummary && (
@@ -581,6 +620,9 @@ export default function Billing() {
                         {calcSummary.hasSplit && <span className="text-purple-400">· Split period active</span>}
                         {calcSummary.skusWithCatalog > 0 && <span className="text-green-400">· {calcSummary.skusWithCatalog} from catalog</span>}
                         {calcSummary.skusWithoutCatalog > 0 && <span className="text-orange-400">· {calcSummary.skusWithoutCatalog} default rate</span>}
+                        {calcSummary.transactionChargeCount > 0 && (
+                          <span className="text-green-400">· {calcSummary.transactionChargeCount} transaction charge{calcSummary.transactionChargeCount !== 1 ? 's' : ''} collected</span>
+                        )}
                       </div>
                       <button onClick={() => calculateBilling(selectedClient, selectedMonth, selectedYear)}
                         className="text-blue-400 hover:text-blue-300 flex items-center gap-1 text-xs">
@@ -615,9 +657,10 @@ export default function Billing() {
                       <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
                         {autoLines.map((item,i) => (
                           <div key={i} className={`grid grid-cols-12 gap-2 items-center rounded-lg px-2 py-1.5 border ${
-                            item.category==='storage'   ? 'bg-purple-500/5 border-purple-500/10' :
-                            item.category==='receiving' ? 'bg-blue-500/5 border-blue-500/10' :
-                            item.category==='outbound'  ? 'bg-orange-500/5 border-orange-500/10' :
+                            item.category==='storage'     ? 'bg-purple-500/5 border-purple-500/10' :
+                            item.category==='receiving'   ? 'bg-blue-500/5 border-blue-500/10' :
+                            item.category==='outbound'    ? 'bg-orange-500/5 border-orange-500/10' :
+                            item.category==='transaction' ? 'bg-green-500/5 border-green-500/10' :
                             'bg-gray-800/30 border-transparent'
                           }`}>
                             <input value={item.description} onChange={e=>updateAutoLine(i,'description',e.target.value)}
@@ -644,7 +687,6 @@ export default function Billing() {
                 </>
               )}
 
-              {/* BILLING WIZARD TAB */}
               {invoiceTab === 'wizard' && selectedClient && (
                 <BillingWizard
                   client={selectedClientObj}
@@ -655,7 +697,6 @@ export default function Billing() {
                 />
               )}
 
-              {/* Combined total */}
               {allLines.length > 0 && (
                 <div className="flex justify-between items-center pt-3 border-t border-gray-800">
                   <div className="text-xs text-gray-500 space-x-3">
