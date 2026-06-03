@@ -1,55 +1,23 @@
 ﻿import { useState, useEffect } from 'react'
 import {
   collection, addDoc, getDocs, doc, updateDoc,
-  query, orderBy, runTransaction, setDoc
+  query, orderBy
 } from 'firebase/firestore'
 import { db } from '../firebase'
 import {
   Plus, X, Package, ChevronDown, Search,
   ArrowLeft, Truck, DollarSign, FileText,
-  CheckCircle, Clock, Pencil, Trash2, Save, Filter, X as XIcon, Layers, AlertTriangle, Hash
+  CheckCircle, Clock, Pencil, Trash2, Save, Filter, X as XIcon
 } from 'lucide-react'
 import BarcodeScanner from '../components/BarcodeScanner'
 import TransactionCharges from '../components/TransactionCharges'
 import BulkUpload from '../components/BulkUpload'
 
-// Atomic sequential pallet ID generator - 5 digits, zero-padded
-// Uses Firestore transaction to guarantee no duplicates across concurrent users.
-const generateSequentialPalletId = async () => {
-  const counterRef = doc(db, 'system', 'counters')
-  const next = await runTransaction(db, async (tx) => {
-    const snap = await tx.get(counterRef)
-    const current = snap.exists() ? (snap.data().palletId || 0) : 0
-    const incremented = current + 1
-    tx.set(counterRef, { palletId: incremented }, { merge: true })
-    return incremented
-  })
-  return String(next).padStart(5, '0')
+const generatePalletId = () => {
+  const now = new Date()
+  const date = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`
+  return `${date}-${Math.floor(Math.random()*9000)+1000}`
 }
-
-// Reserve a batch of sequential IDs in a single transaction (faster than calling one-by-one)
-const reservePalletIds = async (count) => {
-  if (count <= 0) return []
-  const counterRef = doc(db, 'system', 'counters')
-  const startEnd = await runTransaction(db, async (tx) => {
-    const snap = await tx.get(counterRef)
-    const current = snap.exists() ? (snap.data().palletId || 0) : 0
-    const newValue = current + count
-    tx.set(counterRef, { palletId: newValue }, { merge: true })
-    return { start: current + 1, end: newValue }
-  })
-  const ids = []
-  for (let i = startEnd.start; i <= startEnd.end; i++) {
-    ids.push(String(i).padStart(5, '0'))
-  }
-  return ids
-}
-
-// Detect legacy ID format (YYYYMMDD-NNNN)
-const isLegacyPalletId = (id) => typeof id === 'string' && /^\d{8}-\d{4}$/.test(id)
-
-// Old function name kept for any external references — now async
-const generatePalletId = generateSequentialPalletId
 
 const genTransactionId = () => {
   const now = new Date()
@@ -66,8 +34,7 @@ const statusConfig = {
 
 const emptyLineItem = {
   sku: '', description: '', quantity: '', primaryUnits: 'Pallet',
-  location: '', condition: 'A', weight: '', volume: '', notes: '',
-  pallets: []
+  location: '', condition: 'A', weight: '', volume: '', notes: ''
 }
 
 const inputCls = "w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500"
@@ -88,8 +55,6 @@ export default function Receiving() {
   const [filterSearch, setFilterSearch] = useState('')
   const [filterDateFrom, setFilterDateFrom] = useState('')
   const [filterDateTo, setFilterDateTo] = useState('')
-  const [palletGenModal, setPalletGenModal] = useState(null)  // { lineIndex, qty, unitsPerPallet }
-  const [palletGenConfig, setPalletGenConfig] = useState({ remainderMode: 'partial' })  // 'last' | 'partial' | 'even'
   const [filtersExpanded, setFiltersExpanded] = useState(() => localStorage.getItem('jct-receiving-filters') !== 'collapsed')
   const toggleFilters = () => { const v = !filtersExpanded; setFiltersExpanded(v); localStorage.setItem('jct-receiving-filters', v ? 'expanded' : 'collapsed') }
   const clearFilters = () => { setFilterClient(''); setFilterStatus(''); setFilterSearch(''); setFilterDateFrom(''); setFilterDateTo('') }
@@ -214,48 +179,24 @@ export default function Receiving() {
       const receiptDoc = await addDoc(collection(db, 'receipts'), receiptData)
 
       for (const item of validItems) {
-        // If user has generated pallets for this line, use them as-is
-        if (Array.isArray(item.pallets) && item.pallets.length > 0) {
-          for (const p of item.pallets) {
-            await addDoc(collection(db, 'inventory'), {
-              palletId: p.palletId,
-              clientId: form.clientId,
-              clientName: form.clientName,
-              sku: item.sku.toUpperCase(),
-              description: item.description,
-              units: Number(p.units || 0),
-              condition: item.condition || 'A',
-              location: p.location || item.location || '',
-              status: 'available',
-              receivedDate: form.arrivalDate.split('T')[0],
-              poNumber: form.poNumber,
-              receiptId: receiptDoc.id,
-              weight: item.weight || '',
-              partial: !!p.partial,
-              createdAt: new Date().toISOString()
-            })
-          }
-        } else {
-          // Legacy fallback: 1 pallet per "quantity" unit with auto-generated IDs
-          const palletIds = await reservePalletIds(Number(item.quantity || 1))
-          for (const pid of palletIds) {
-            await addDoc(collection(db, 'inventory'), {
-              palletId: pid,
-              clientId: form.clientId,
-              clientName: form.clientName,
-              sku: item.sku.toUpperCase(),
-              description: item.description,
-              units: 1,
-              condition: item.condition || 'A',
-              location: item.location || '',
-              status: 'available',
-              receivedDate: form.arrivalDate.split('T')[0],
-              poNumber: form.poNumber,
-              receiptId: receiptDoc.id,
-              weight: item.weight || '',
-              createdAt: new Date().toISOString()
-            })
-          }
+        const pallets = Number(item.quantity || 1)
+        for (let p = 0; p < pallets; p++) {
+          await addDoc(collection(db, 'inventory'), {
+            palletId: generatePalletId(),
+            clientId: form.clientId,
+            clientName: form.clientName,
+            sku: item.sku.toUpperCase(),
+            description: item.description,
+            units: 1,
+            condition: item.condition || 'A',
+            location: item.location || '',
+            status: 'available',
+            receivedDate: form.arrivalDate.split('T')[0],
+            poNumber: form.poNumber,
+            receiptId: receiptDoc.id,
+            weight: item.weight || '',
+            createdAt: new Date().toISOString()
+          })
         }
       }
 
@@ -273,128 +214,6 @@ export default function Receiving() {
     bolNumber: '', truckNumber: '', sealNumber: '', driverName: '',
     warehouseInstructions: '', lineItems: [{ ...emptyLineItem }], charges: []
   })
-
-  // ─────────────────────────────────────────────────────────────────
-  // PALLET HELPERS
-  // ─────────────────────────────────────────────────────────────────
-  const findCatalogItem = (clientId, sku) =>
-    catalogItems.find(c => c.clientId === clientId && (c.sku || '').toUpperCase() === (sku || '').toUpperCase())
-
-  const openPalletGenerator = (lineIndex) => {
-    const item = form.lineItems[lineIndex]
-    if (!item.sku) { alert('Select a SKU first'); return }
-    const qty = Number(item.quantity)
-    if (!qty || qty <= 0) { alert('Enter a positive quantity first'); return }
-    const catalog = findCatalogItem(form.clientId, item.sku)
-    const unitsPerPallet = Number(catalog?.unitsPerPallet || 0)
-    setPalletGenModal({ lineIndex, qty, unitsPerPallet, sku: item.sku })
-    setPalletGenConfig({ remainderMode: 'partial' })
-  }
-
-  const [generatingPallets, setGeneratingPallets] = useState(false)
-  const executePalletGeneration = async () => {
-    if (generatingPallets) return
-    setGeneratingPallets(true)
-    try {
-    const { lineIndex, qty, unitsPerPallet } = palletGenModal
-    const mode = palletGenConfig.remainderMode
-
-    // If no unitsPerPallet defined, each "unit" is one pallet
-    if (!unitsPerPallet || unitsPerPallet <= 0) {
-      const ids = await reservePalletIds(qty)
-      const pallets = ids.map(id => ({ palletId: id, units: 1, location: form.lineItems[lineIndex].location || '', partial: false }))
-      const items = [...form.lineItems]
-      items[lineIndex] = { ...items[lineIndex], pallets }
-      setForm({ ...form, lineItems: items })
-      setPalletGenModal(null)
-      return
-    }
-
-    const fullPallets = Math.floor(qty / unitsPerPallet)
-    const remainder = qty - (fullPallets * unitsPerPallet)
-    let pallets = []
-
-    if (remainder === 0) {
-      const ids = await reservePalletIds(fullPallets)
-      pallets = ids.map(id => ({ palletId: id, units: unitsPerPallet, location: form.lineItems[lineIndex].location || '', partial: false }))
-    } else if (mode === 'last') {
-      // Last pallet gets the extra units (over-full pallet)
-      const ids = await reservePalletIds(fullPallets)
-      pallets = ids.map((id, i) => ({
-        palletId: id,
-        units: i === ids.length - 1 ? unitsPerPallet + remainder : unitsPerPallet,
-        location: form.lineItems[lineIndex].location || '',
-        partial: false,
-      }))
-    } else if (mode === 'partial') {
-      // Create an extra partial pallet for the remainder
-      const ids = await reservePalletIds(fullPallets + 1)
-      pallets = ids.map((id, i) => ({
-        palletId: id,
-        units: i < fullPallets ? unitsPerPallet : remainder,
-        location: form.lineItems[lineIndex].location || '',
-        partial: i >= fullPallets,
-      }))
-    } else if (mode === 'even') {
-      // Spread the remainder across full pallets
-      const totalPallets = fullPallets
-      if (totalPallets === 0) {
-        // Edge case: qty smaller than 1 pallet
-        const ids = await reservePalletIds(1)
-        pallets = [{ palletId: ids[0], units: qty, location: form.lineItems[lineIndex].location || '', partial: true }]
-      } else {
-        const base = Math.floor(qty / totalPallets)
-        const extras = qty - (base * totalPallets)
-        const ids = await reservePalletIds(totalPallets)
-        pallets = ids.map((id, i) => ({
-          palletId: id,
-          units: i < extras ? base + 1 : base,
-          location: form.lineItems[lineIndex].location || '',
-          partial: (i < extras ? base + 1 : base) !== unitsPerPallet,
-        }))
-      }
-    }
-
-    const items = [...form.lineItems]
-    items[lineIndex] = { ...items[lineIndex], pallets }
-    setForm({ ...form, lineItems: items })
-    setPalletGenModal(null)
-    } finally { setGeneratingPallets(false) }
-  }
-
-  const addManualPallet = async (lineIndex) => {
-    const ids = await reservePalletIds(1)
-    const items = [...form.lineItems]
-    const current = items[lineIndex].pallets || []
-    items[lineIndex] = {
-      ...items[lineIndex],
-      pallets: [...current, { palletId: ids[0], units: 0, location: items[lineIndex].location || '', partial: false }]
-    }
-    setForm({ ...form, lineItems: items })
-  }
-
-  const updatePalletField = (lineIndex, palletIdx, field, value) => {
-    const items = [...form.lineItems]
-    const pallets = [...(items[lineIndex].pallets || [])]
-    pallets[palletIdx] = { ...pallets[palletIdx], [field]: field === 'units' ? Number(value) : value }
-    // Recompute partial flag if units changed
-    if (field === 'units') {
-      const catalog = findCatalogItem(form.clientId, items[lineIndex].sku)
-      const upp = Number(catalog?.unitsPerPallet || 0)
-      pallets[palletIdx].partial = upp > 0 && Number(value) !== upp
-    }
-    items[lineIndex] = { ...items[lineIndex], pallets }
-    setForm({ ...form, lineItems: items })
-  }
-
-  const removePallet = (lineIndex, palletIdx) => {
-    const items = [...form.lineItems]
-    items[lineIndex] = {
-      ...items[lineIndex],
-      pallets: (items[lineIndex].pallets || []).filter((_, i) => i !== palletIdx)
-    }
-    setForm({ ...form, lineItems: items })
-  }
 
   const addFormLineItem = () =>
     setForm({ ...form, lineItems: [...form.lineItems, { ...emptyLineItem }] })
@@ -443,11 +262,10 @@ export default function Receiving() {
     if (!newItemForm.sku) return
     const updated = [...(selectedReceipt.lineItems || []), { ...newItemForm, sku: newItemForm.sku.toUpperCase() }]
     await updateDoc(doc(db, 'receipts', selectedReceipt.id), { lineItems: updated })
-    const palletCount = Number(newItemForm.quantity || 1)
-    const palletIds = await reservePalletIds(palletCount)
-    for (const pid of palletIds) {
+    const pallets = Number(newItemForm.quantity || 1)
+    for (let p = 0; p < pallets; p++) {
       await addDoc(collection(db, 'inventory'), {
-        palletId: pid,
+        palletId: generatePalletId(),
         clientId: selectedReceipt.clientId,
         clientName: selectedReceipt.clientName,
         sku: newItemForm.sku.toUpperCase(),
@@ -497,9 +315,9 @@ export default function Receiving() {
     return true
   })
 
-  // ═══════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // NEW RECEIPT VIEW
-  // ═══════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   if (view === 'new') {
     return (
       <div className="p-6">
@@ -515,7 +333,7 @@ export default function Receiving() {
           <div className="flex gap-3">
             <button onClick={() => { setScanTarget({ type: 'form', index: 0 }); setShowScanner(true) }}
               className="flex items-center gap-2 px-4 py-2 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors">
-              📷 Scan SKU
+              ðŸ“· Scan SKU
             </button>
             <button onClick={() => { setView('list'); resetForm() }}
               className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-700 rounded-lg">
@@ -606,7 +424,7 @@ export default function Receiving() {
               <div className="flex gap-2">
                 <button onClick={() => { setScanTarget({ type: 'form', index: form.lineItems.length - 1 }); setShowScanner(true) }}
                   className="flex items-center gap-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg">
-                  📷 Scan
+                  ðŸ“· Scan
                 </button>
                 <button onClick={addFormLineItem}
                   className="flex items-center gap-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg">
@@ -625,8 +443,7 @@ export default function Receiving() {
               <div className="col-span-1"></div>
             </div>
             {form.lineItems.map((item, i) => (
-              <div key={i}>
-              <div className="grid grid-cols-12 gap-2 items-center mb-2">
+              <div key={i} className="grid grid-cols-12 gap-2 items-center mb-2">
                 <div className="col-span-2 relative">
                   <div className="flex items-center gap-1">
                     <div className="flex-1 flex items-center bg-gray-800 border border-gray-700 rounded-lg overflow-hidden focus-within:border-blue-500">
@@ -642,7 +459,7 @@ export default function Receiving() {
                     </div>
                     <button onClick={() => { setScanTarget({ type: 'form', index: i }); setShowScanner(true) }}
                       className="text-blue-400 hover:text-blue-300 p-1 flex-shrink-0" title="Scan barcode">
-                      📷
+                      ðŸ“·
                     </button>
                   </div>
                   {skuDropdown === i && filteredSkus(form.clientId).length > 0 && (
@@ -680,72 +497,6 @@ export default function Receiving() {
                   <X size={14} />
                 </button>
               </div>
-              {/* ─── PALLETS SUB-PANEL ─── */}
-              <div className="mb-3 ml-2 pl-3 border-l-2 border-gray-800">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2 text-xs">
-                    <Layers size={11} className="text-purple-400"/>
-                    <span className="text-gray-400">Pallets:</span>
-                    <span className="text-purple-400 font-medium">{(item.pallets || []).length}</span>
-                    {(item.pallets || []).some(p => p.partial) && (
-                      <span className="flex items-center gap-1 text-amber-400 text-[10px]">
-                        <AlertTriangle size={10}/> contains partial
-                      </span>
-                    )}
-                    {(item.pallets || []).length > 0 && (
-                      <span className="text-gray-500 text-[10px]">
-                        · {(item.pallets || []).reduce((s, p) => s + Number(p.units || 0), 0)} total units
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => openPalletGenerator(i)}
-                      disabled={!item.sku || !item.quantity}
-                      className="flex items-center gap-1 px-2 py-1 text-[10px] rounded bg-purple-600/20 hover:bg-purple-600/40 text-purple-300 border border-purple-500/20 disabled:opacity-30 disabled:cursor-not-allowed">
-                      <Hash size={9}/> Generate Pallets
-                    </button>
-                    <button type="button" onClick={() => addManualPallet(i)}
-                      disabled={!item.sku}
-                      className="flex items-center gap-1 px-2 py-1 text-[10px] rounded bg-gray-700/50 hover:bg-gray-700 text-gray-300 border border-gray-600/30 disabled:opacity-30 disabled:cursor-not-allowed">
-                      <Plus size={9}/> Add Manually
-                    </button>
-                  </div>
-                </div>
-                {(item.pallets || []).length > 0 && (
-                  <div className="bg-gray-950/50 rounded-lg p-2">
-                    <div className="grid grid-cols-12 gap-2 pb-1 text-[10px] text-gray-600 border-b border-gray-800">
-                      <div className="col-span-3">Pallet ID</div>
-                      <div className="col-span-3">Units</div>
-                      <div className="col-span-4">Location</div>
-                      <div className="col-span-1">Status</div>
-                      <div className="col-span-1"></div>
-                    </div>
-                    {(item.pallets || []).map((p, pi) => (
-                      <div key={pi} className="grid grid-cols-12 gap-2 items-center py-1 text-xs">
-                        <div className="col-span-3 font-mono text-blue-400 text-[11px]">{p.palletId}</div>
-                        <input type="number" value={p.units} onChange={e => updatePalletField(i, pi, 'units', e.target.value)}
-                          className="col-span-3 bg-gray-800 border border-gray-700 text-white rounded px-2 py-1 text-[11px] focus:outline-none focus:border-blue-500" placeholder="0" />
-                        <input value={p.location} onChange={e => updatePalletField(i, pi, 'location', e.target.value)}
-                          className="col-span-4 bg-gray-800 border border-gray-700 text-white rounded px-2 py-1 text-[11px] focus:outline-none focus:border-blue-500" placeholder="Location" />
-                        <div className="col-span-1">
-                          {p.partial ? (
-                            <span className="flex items-center gap-1 text-amber-400 text-[10px]" title="Partial pallet">
-                              <AlertTriangle size={10}/> partial
-                            </span>
-                          ) : (
-                            <span className="text-green-400 text-[10px]">full</span>
-                          )}
-                        </div>
-                        <button type="button" onClick={() => removePallet(i, pi)}
-                          className="col-span-1 text-gray-600 hover:text-red-400 flex items-center justify-center">
-                          <X size={11}/>
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              </div>
             ))}
             <div className="border-t border-gray-800 mt-4 pt-3 flex justify-end gap-8 text-sm">
               <span className="text-gray-400">Total Pallets: <span className="text-white font-medium">{form.lineItems.reduce((s, i) => s + Number(i.quantity || 0), 0)}</span></span>
@@ -773,82 +524,6 @@ export default function Receiving() {
           </div>
         )}
 
-
-        {/* ─── PALLET GENERATOR MODAL ─── */}
-        {palletGenModal && (() => {
-          const { qty, unitsPerPallet, sku } = palletGenModal
-          const fullPallets = unitsPerPallet > 0 ? Math.floor(qty / unitsPerPallet) : qty
-          const remainder = unitsPerPallet > 0 ? qty - (fullPallets * unitsPerPallet) : 0
-          return (
-            <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-              <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-lg">
-                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
-                  <h3 className="text-white font-semibold flex items-center gap-2">
-                    <Hash size={16}/> Generate Pallets — {sku}
-                  </h3>
-                  <button onClick={() => setPalletGenModal(null)} className="text-gray-400 hover:text-white">
-                    <X size={18}/>
-                  </button>
-                </div>
-                <div className="px-6 py-4 space-y-4">
-                  <div className="bg-gray-800/40 rounded-lg p-3 text-sm space-y-1">
-                    <div className="flex justify-between"><span className="text-gray-400">Total quantity:</span><span className="text-white font-medium">{qty} units</span></div>
-                    <div className="flex justify-between"><span className="text-gray-400">Units per pallet (from catalog):</span><span className="text-white font-medium">{unitsPerPallet || 'not set'}</span></div>
-                    {unitsPerPallet > 0 && (
-                      <>
-                        <div className="flex justify-between"><span className="text-gray-400">Full pallets:</span><span className="text-green-400 font-medium">{fullPallets}</span></div>
-                        <div className="flex justify-between"><span className="text-gray-400">Remainder units:</span><span className={remainder > 0 ? 'text-amber-400 font-medium' : 'text-gray-500'}>{remainder}</span></div>
-                      </>
-                    )}
-                  </div>
-
-                  {unitsPerPallet === 0 && (
-                    <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 text-xs text-blue-300">
-                      No "Units per pallet" set for this SKU. Each unit will become its own pallet ({qty} pallets total). To enable smart splitting, set "Units per pallet" in the Items catalog.
-                    </div>
-                  )}
-
-                  {unitsPerPallet > 0 && remainder > 0 && (
-                    <div>
-                      <div className="text-xs text-gray-400 mb-2">How to handle the {remainder}-unit remainder?</div>
-                      <div className="space-y-2">
-                        <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${palletGenConfig.remainderMode === 'partial' ? 'bg-blue-600/10 border-blue-500/30' : 'bg-gray-800/30 border-gray-700 hover:bg-gray-800/50'}`}>
-                          <input type="radio" checked={palletGenConfig.remainderMode === 'partial'} onChange={() => setPalletGenConfig({ remainderMode: 'partial' })} className="mt-0.5 accent-blue-500"/>
-                          <div className="flex-1 text-xs">
-                            <div className="text-white font-medium mb-0.5">Create a partial pallet</div>
-                            <div className="text-gray-500">{fullPallets} full pallets ({unitsPerPallet} units each) + 1 partial pallet ({remainder} units). The partial pallet will be flagged.</div>
-                          </div>
-                        </label>
-                        <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${palletGenConfig.remainderMode === 'last' ? 'bg-blue-600/10 border-blue-500/30' : 'bg-gray-800/30 border-gray-700 hover:bg-gray-800/50'}`}>
-                          <input type="radio" checked={palletGenConfig.remainderMode === 'last'} onChange={() => setPalletGenConfig({ remainderMode: 'last' })} className="mt-0.5 accent-blue-500"/>
-                          <div className="flex-1 text-xs">
-                            <div className="text-white font-medium mb-0.5">Add to last pallet (over-fill)</div>
-                            <div className="text-gray-500">{fullPallets - 1 >= 0 ? fullPallets - 1 : 0} full pallets + 1 over-full pallet with {unitsPerPallet + remainder} units.</div>
-                          </div>
-                        </label>
-                        <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${palletGenConfig.remainderMode === 'even' ? 'bg-blue-600/10 border-blue-500/30' : 'bg-gray-800/30 border-gray-700 hover:bg-gray-800/50'}`}>
-                          <input type="radio" checked={palletGenConfig.remainderMode === 'even'} onChange={() => setPalletGenConfig({ remainderMode: 'even' })} className="mt-0.5 accent-blue-500"/>
-                          <div className="flex-1 text-xs">
-                            <div className="text-white font-medium mb-0.5">Spread evenly</div>
-                            <div className="text-gray-500">Distribute {qty} units across {fullPallets} pallets — none will match the catalog quantity exactly.</div>
-                          </div>
-                        </label>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <div className="px-6 py-4 border-t border-gray-800 flex justify-end gap-3">
-                  <button onClick={() => setPalletGenModal(null)}
-                    className="px-4 py-2 text-sm text-gray-400 hover:text-white">Cancel</button>
-                  <button onClick={executePalletGeneration}
-                    className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
-                    Generate
-                  </button>
-                </div>
-              </div>
-            </div>
-          )
-        })()}
         {showScanner && (
           <BarcodeScanner title="Scan SKU Barcode" onScan={handleScan}
             onClose={() => { setShowScanner(false); setScanTarget(null) }} />
@@ -857,9 +532,9 @@ export default function Receiving() {
     )
   }
 
-  // ═══════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // DETAIL VIEW
-  // ═══════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   if (view === 'detail' && selectedReceipt) {
     const r = receipts.find(x => x.id === selectedReceipt.id) || selectedReceipt
     const sc = statusConfig[r.status] || statusConfig.open
@@ -914,9 +589,9 @@ export default function Receiving() {
         <div className="grid grid-cols-6 gap-3 mb-4">
           {[
             { label: 'Customer',     value: r.clientName },
-            { label: 'Reference #',  value: r.referenceId || '�' },
+            { label: 'Reference #',  value: r.referenceId || 'ï¿½' },
             { label: 'Transaction',  value: r.transactionId || r.id.slice(-6).toUpperCase() },
-            { label: 'Arrival Date', value: r.arrivalDate ? new Date(r.arrivalDate).toLocaleDateString() : '�' },
+            { label: 'Arrival Date', value: r.arrivalDate ? new Date(r.arrivalDate).toLocaleDateString() : 'ï¿½' },
             { label: 'Total Pallets',value: String(r.totalPallets || r.lineItems?.length || 0) },
             { label: 'Total Charges',value: `$${Number(r.totalCharges || 0).toFixed(2)}` },
           ].map(f => (
@@ -949,12 +624,12 @@ export default function Receiving() {
               <h3 className="text-white font-medium mb-4">Order Information</h3>
               <div className="grid grid-cols-3 gap-x-8 gap-y-3 text-sm">
                 {[
-                  ['Customer', r.clientName || '�'],
-                  ['Reference ID', r.referenceId || '�'],
-                  ['Purchase Order', r.poNumber || '�'],
-                  ['Arrival Date', r.arrivalDate ? new Date(r.arrivalDate).toLocaleString() : '�'],
-                  ['Expected Date', r.expectedDate ? new Date(r.expectedDate).toLocaleString() : '�'],
-                  ['Warehouse Instructions', r.warehouseInstructions || '�'],
+                  ['Customer', r.clientName || 'ï¿½'],
+                  ['Reference ID', r.referenceId || 'ï¿½'],
+                  ['Purchase Order', r.poNumber || 'ï¿½'],
+                  ['Arrival Date', r.arrivalDate ? new Date(r.arrivalDate).toLocaleString() : 'ï¿½'],
+                  ['Expected Date', r.expectedDate ? new Date(r.expectedDate).toLocaleString() : 'ï¿½'],
+                  ['Warehouse Instructions', r.warehouseInstructions || 'ï¿½'],
                 ].map(([label, value]) => (
                   <div key={label}><span className="text-gray-500 text-xs">{label}</span><p className="text-white">{value}</p></div>
                 ))}
@@ -964,12 +639,12 @@ export default function Receiving() {
               <h3 className="text-white font-medium mb-4">Transport Details</h3>
               <div className="grid grid-cols-3 gap-x-8 gap-y-3 text-sm">
                 {[
-                  ['Carrier', r.carrier || '�'],
-                  ['Tracking #', r.trackingNumber || '�'],
-                  ['BOL #', r.bolNumber || '�'],
-                  ['Truck #', r.truckNumber || '�'],
-                  ['Seal #', r.sealNumber || '�'],
-                  ['Driver', r.driverName || '�'],
+                  ['Carrier', r.carrier || 'ï¿½'],
+                  ['Tracking #', r.trackingNumber || 'ï¿½'],
+                  ['BOL #', r.bolNumber || 'ï¿½'],
+                  ['Truck #', r.truckNumber || 'ï¿½'],
+                  ['Seal #', r.sealNumber || 'ï¿½'],
+                  ['Driver', r.driverName || 'ï¿½'],
                 ].map(([label, value]) => (
                   <div key={label}><span className="text-gray-500 text-xs">{label}</span><p className="text-white">{value}</p></div>
                 ))}
@@ -994,7 +669,7 @@ export default function Receiving() {
                   <>
                     <button onClick={() => { setScanTarget({ type: 'detail' }); setShowScanner(true) }}
                       className="flex items-center gap-1 text-sm bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg">
-                      📷 Scan
+                      ðŸ“· Scan
                     </button>
                     <button onClick={() => { setShowAddItem(!showAddItem); setNewItemForm({ ...emptyLineItem }) }}
                       className="flex items-center gap-1 text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg">
@@ -1078,16 +753,16 @@ export default function Receiving() {
                     ) : (
                       <>
                         <td className="px-4 py-3 text-white font-mono text-xs font-medium">{item.sku}</td>
-                        <td className="px-4 py-3 text-gray-300 text-xs max-w-xs truncate">{item.description || '�'}</td>
-                        <td className="px-4 py-3 text-white font-medium">{item.quantity || '�'}</td>
+                        <td className="px-4 py-3 text-gray-300 text-xs max-w-xs truncate">{item.description || 'ï¿½'}</td>
+                        <td className="px-4 py-3 text-white font-medium">{item.quantity || 'ï¿½'}</td>
                         <td className="px-4 py-3 text-gray-400 text-xs">{item.primaryUnits || 'Pallet'}</td>
                         <td className="px-4 py-3">
                           <span className={`text-xs px-2 py-0.5 rounded-full ${item.condition === 'A' ? 'bg-green-500/10 text-green-400' : item.condition === 'B' ? 'bg-yellow-500/10 text-yellow-400' : 'bg-red-500/10 text-red-400'}`}>
                             Grade {item.condition || 'A'}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-gray-300 text-xs">{item.location || '�'}</td>
-                        <td className="px-4 py-3 text-gray-400 text-xs">{item.weight ? `${item.weight} lbs` : '�'}</td>
+                        <td className="px-4 py-3 text-gray-300 text-xs">{item.location || 'ï¿½'}</td>
+                        <td className="px-4 py-3 text-gray-400 text-xs">{item.weight ? `${item.weight} lbs` : 'ï¿½'}</td>
                         <td className="px-4 py-3">
                           {r.status !== 'complete' && (
                             <div className="flex gap-2">
@@ -1145,10 +820,10 @@ export default function Receiving() {
               {[
                 ['Receipt ID', r.id],
                 ['Status', sc.label],
-                ['Created', r.createdAt ? new Date(r.createdAt).toLocaleString() : '�'],
-                ['Completed', r.completedAt ? new Date(r.completedAt).toLocaleString() : '�'],
+                ['Created', r.createdAt ? new Date(r.createdAt).toLocaleString() : 'ï¿½'],
+                ['Completed', r.completedAt ? new Date(r.completedAt).toLocaleString() : 'ï¿½'],
                 ['Total Pallets', String(r.totalPallets || 0)],
-                ['Total Weight', r.totalWeight ? `${r.totalWeight} lbs` : '�'],
+                ['Total Weight', r.totalWeight ? `${r.totalWeight} lbs` : 'ï¿½'],
               ].map(([label, value]) => (
                 <div key={label}>
                   <span className="text-gray-500 text-xs">{label}</span>
@@ -1158,6 +833,7 @@ export default function Receiving() {
             </div>
           </div>
         )}
+
         {showScanner && (
           <BarcodeScanner title="Scan SKU Barcode" onScan={handleScan}
             onClose={() => { setShowScanner(false); setScanTarget(null) }} />
@@ -1166,9 +842,9 @@ export default function Receiving() {
     )
   }
 
-  // ═══════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // LIST VIEW
-  // ═══════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   const activeFilterCount = [filterClient, filterStatus, filterSearch, filterDateFrom, filterDateTo].filter(Boolean).length
 
   return (
@@ -1272,11 +948,11 @@ export default function Receiving() {
                     <tr key={r.id} onClick={() => { setSelectedReceipt(r); setActiveTab('items'); setView('detail') }}
                       className={`border-b border-gray-800/50 hover:bg-gray-800/40 cursor-pointer transition-colors ${i % 2 === 0 ? '' : 'bg-gray-800/10'}`}>
                       <td className="px-4 py-3 text-blue-400 font-mono text-xs font-medium">{r.transactionId || r.id.slice(-6).toUpperCase()}</td>
-                      <td className="px-4 py-3 text-white text-xs font-medium">{r.referenceId || r.poNumber || '�'}</td>
-                      <td className="px-4 py-3 text-gray-300 text-xs">{r.createdAt ? new Date(r.createdAt).toLocaleDateString() : '�'}</td>
+                      <td className="px-4 py-3 text-white text-xs font-medium">{r.referenceId || r.poNumber || 'ï¿½'}</td>
+                      <td className="px-4 py-3 text-gray-300 text-xs">{r.createdAt ? new Date(r.createdAt).toLocaleDateString() : 'ï¿½'}</td>
                       <td className="px-4 py-3 text-white text-sm font-medium">{r.clientName}</td>
-                      <td className="px-4 py-3 text-gray-400 text-xs max-w-xs truncate">{skuList || '�'}</td>
-                      <td className="px-4 py-3 text-gray-300 text-xs">{r.arrivalDate ? new Date(r.arrivalDate).toLocaleDateString() : '�'}</td>
+                      <td className="px-4 py-3 text-gray-400 text-xs max-w-xs truncate">{skuList || 'ï¿½'}</td>
+                      <td className="px-4 py-3 text-gray-300 text-xs">{r.arrivalDate ? new Date(r.arrivalDate).toLocaleDateString() : 'ï¿½'}</td>
                       <td className="px-4 py-3">
                         <span className={`text-xs px-2 py-0.5 rounded-full border flex items-center gap-1 w-fit ${sc.color}`}>
                           <StatusIcon size={10} /> {sc.label}

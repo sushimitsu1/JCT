@@ -1,8 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+﻿import { useState, useEffect, useCallback } from 'react'
 import { collection, getDocs, doc, updateDoc, addDoc, query, orderBy } from 'firebase/firestore'
 import { db } from '../firebase'
-
-const isLegacyPalletId = (id) => typeof id === 'string' && /^\d{8}-\d{4}$/.test(id)
 import {
   Package, MapPin, Pencil, Check, X, Plus, Minus,
   ClipboardList, Download, RefreshCw, ChevronDown,
@@ -97,7 +95,7 @@ export default function Inventory() {
     setRefreshing(false)
   }
 
-  // ─── BARCODE SCAN ─────────────────────────────────────────────────
+  // â”€â”€â”€ BARCODE SCAN â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleInventoryScan = (barcode) => {
     setShowScanner(false)
     setFilters(f => ({ ...f, sku: barcode }))
@@ -196,7 +194,7 @@ export default function Inventory() {
           quantity: Math.abs(item.variance),
           previousUnits: item.systemUnits, newUnits: item.physicalUnits,
           reason: 'Cycle count adjustment',
-          notes: `Cycle count — system: ${item.systemUnits}, physical: ${item.physicalUnits}`,
+          notes: `Cycle count â€” system: ${item.systemUnits}, physical: ${item.physicalUnits}`,
           createdAt: new Date().toISOString()
         })
       }
@@ -208,8 +206,8 @@ export default function Inventory() {
 
   const exportCycleCount = () => {
     const rows = cycleInventory.map(item => ({
-      'Pallet ID': item.palletId || '—', 'SKU': item.sku,
-      'Description': item.description || '—', 'Location': item.location || '—',
+      'Pallet ID': item.palletId || 'â€”', 'SKU': item.sku,
+      'Description': item.description || 'â€”', 'Location': item.location || 'â€”',
       'System Units': item.units || item.quantity || 0,
       'Physical Count': cycleCounts[item.id] || '',
       'Variance': cycleCounts[item.id] !== ''
@@ -260,7 +258,7 @@ export default function Inventory() {
   return (
     <div className="flex h-full overflow-hidden">
 
-      {/* ─── Left Search Sidebar ─── */}
+      {/* â”€â”€â”€ Left Search Sidebar â”€â”€â”€ */}
       {sidebarOpen && (
         <div className="w-60 bg-gray-900 border-r border-gray-800 flex flex-col flex-shrink-0 overflow-y-auto">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
@@ -309,7 +307,7 @@ export default function Inventory() {
                           className="flex-1 bg-transparent text-white text-xs px-2 py-1.5 focus:outline-none" placeholder="SKU..." />
                       </div>
                       <button onClick={() => setShowScanner(true)} className="text-blue-400 hover:text-blue-300 p-1.5 bg-gray-800 rounded-lg border border-gray-700" title="Scan barcode">
-                        📷
+                        ðŸ“·
                       </button>
                     </div>
                   </div>
@@ -403,7 +401,7 @@ export default function Inventory() {
         </div>
       )}
 
-      {/* ─── Main Content ─── */}
+      {/* â”€â”€â”€ Main Content â”€â”€â”€ */}
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="p-6 pb-4 flex-shrink-0">
 
@@ -420,10 +418,10 @@ export default function Inventory() {
               <div>
                 <h2 className="text-xl font-semibold text-white">Inventory</h2>
                 <p className="text-sm text-gray-500 mt-0.5">
-                  {filtered.length} pallets · {totalUnits} units shown
+                  {filtered.length} pallets Â· {totalUnits} units shown
                   {lastRefreshed && (
                     <span className="ml-2 text-gray-600 text-xs">
-                      · Updated {lastRefreshed.toLocaleTimeString()}
+                      Â· Updated {lastRefreshed.toLocaleTimeString()}
                     </span>
                   )}
                 </p>
@@ -434,7 +432,7 @@ export default function Inventory() {
                 onClick={() => setShowScanner(true)}
                 className="flex items-center gap-2 text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white px-3 py-2 rounded-lg transition-colors"
               >
-                📷 Scan
+                ðŸ“· Scan
               </button>
               <button
                 onClick={handleRefresh}
@@ -474,7 +472,7 @@ export default function Inventory() {
         {/* Tab content */}
         <div className="flex-1 overflow-auto px-6 pb-6">
 
-          {/* ── INVENTORY TAB ── */}
+          {/* â”€â”€ INVENTORY TAB â”€â”€ */}
           {activeTab === 'inventory' && (
             <>
               {/* Summary cards */}
@@ -534,16 +532,11 @@ export default function Inventory() {
                       </tr>
                     ) : filtered.map((item, i) => (
                       <tr key={item.id} className={`border-b border-gray-800/50 hover:bg-gray-800/40 transition-colors ${i % 2 === 0 ? '' : 'bg-gray-800/20'}`}>
-                        <td className="px-4 py-3 text-blue-400 font-mono text-xs font-medium">
-                          {item.palletId || '—'}
-                          {isLegacyPalletId(item.palletId) && (
-                            <span className="ml-1.5 px-1 py-0.5 text-[9px] uppercase rounded bg-gray-700/50 text-gray-400 border border-gray-600/30" title="Legacy pallet ID format">legacy</span>
-                          )}
-                        </td>
+                        <td className="px-4 py-3 text-blue-400 font-mono text-xs font-medium">{item.palletId || 'â€”'}</td>
                         <td className="px-4 py-3 text-white font-mono text-xs font-medium">{item.sku}</td>
-                        <td className="px-4 py-3 text-gray-300 max-w-xs truncate text-xs">{item.description || '—'}</td>
+                        <td className="px-4 py-3 text-gray-300 max-w-xs truncate text-xs">{item.description || 'â€”'}</td>
                         <td className="px-4 py-3 text-gray-300 text-xs">{item.clientName}</td>
-                        <td className="px-4 py-3 text-white font-medium">{item.units || item.quantity || '—'}</td>
+                        <td className="px-4 py-3 text-white font-medium">{item.units || item.quantity || 'â€”'}</td>
                         <td className="px-4 py-3">
                           <span className={`text-xs px-2 py-0.5 rounded-full border ${conditionColors[item.condition]}`}>
                             {item.condition}
@@ -606,7 +599,7 @@ export default function Inventory() {
             </>
           )}
 
-          {/* ── ADJUSTMENTS TAB ── */}
+          {/* â”€â”€ ADJUSTMENTS TAB â”€â”€ */}
           {activeTab === 'adjustments' && (
             <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
               <table className="w-full text-sm">
@@ -618,7 +611,7 @@ export default function Inventory() {
                     <th className="text-left px-4 py-3 text-gray-400 font-medium text-xs">Pallet ID</th>
                     <th className="text-left px-4 py-3 text-gray-400 font-medium text-xs">Type</th>
                     <th className="text-left px-4 py-3 text-gray-400 font-medium text-xs">Qty</th>
-                    <th className="text-left px-4 py-3 text-gray-400 font-medium text-xs">Before → After</th>
+                    <th className="text-left px-4 py-3 text-gray-400 font-medium text-xs">Before â†’ After</th>
                     <th className="text-left px-4 py-3 text-gray-400 font-medium text-xs">Reason</th>
                   </tr>
                 </thead>
@@ -635,18 +628,18 @@ export default function Inventory() {
                       <td className="px-4 py-3 text-gray-400 text-xs">{new Date(adj.createdAt).toLocaleDateString()}</td>
                       <td className="px-4 py-3 text-gray-300 text-xs">{adj.clientName}</td>
                       <td className="px-4 py-3 text-white font-mono text-xs">{adj.sku}</td>
-                      <td className="px-4 py-3 text-blue-400 font-mono text-xs">{adj.palletId || '—'}</td>
+                      <td className="px-4 py-3 text-blue-400 font-mono text-xs">{adj.palletId || 'â€”'}</td>
                       <td className="px-4 py-3">
                         <span className={`text-xs px-2 py-0.5 rounded-full border ${
                           adj.type === 'add'
                             ? 'bg-green-500/10 text-green-400 border-green-500/20'
                             : 'bg-red-500/10 text-red-400 border-red-500/20'
                         }`}>
-                          {adj.type === 'add' ? '+ Add' : '− Remove'}
+                          {adj.type === 'add' ? '+ Add' : 'âˆ’ Remove'}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-white font-medium">{adj.quantity}</td>
-                      <td className="px-4 py-3 text-gray-400 text-xs">{adj.previousUnits} → {adj.newUnits}</td>
+                      <td className="px-4 py-3 text-gray-400 text-xs">{adj.previousUnits} â†’ {adj.newUnits}</td>
                       <td className="px-4 py-3 text-gray-300 text-xs">{adj.reason}</td>
                     </tr>
                   ))}
@@ -655,7 +648,7 @@ export default function Inventory() {
             </div>
           )}
 
-          {/* ── CYCLE COUNT TAB ── */}
+          {/* â”€â”€ CYCLE COUNT TAB â”€â”€ */}
           {activeTab === 'cycle' && (
             <div>
               {!cycleStarted ? (
@@ -682,7 +675,7 @@ export default function Inventory() {
                   <div className="flex items-center justify-between mb-4">
                     <div>
                       <h3 className="text-white font-semibold">
-                        Cycle Count — {cycleClient ? clients.find(c => c.id === cycleClient)?.companyName : 'All Clients'}
+                        Cycle Count â€” {cycleClient ? clients.find(c => c.id === cycleClient)?.companyName : 'All Clients'}
                       </h3>
                       <p className="text-gray-400 text-sm mt-0.5">Enter physical unit count for each pallet</p>
                     </div>
@@ -719,10 +712,10 @@ export default function Inventory() {
                             ? Number(counted) - systemUnits : null
                           return (
                             <tr key={item.id} className={`border-b border-gray-800/50 ${i % 2 === 0 ? '' : 'bg-gray-800/20'}`}>
-                              <td className="px-4 py-2 text-blue-400 font-mono text-xs">{item.palletId || '—'}</td>
+                              <td className="px-4 py-2 text-blue-400 font-mono text-xs">{item.palletId || 'â€”'}</td>
                               <td className="px-4 py-2 text-white font-mono text-xs">{item.sku}</td>
                               <td className="px-4 py-2 text-gray-300 text-xs">{item.clientName}</td>
-                              <td className="px-4 py-2 text-gray-300 text-xs">{item.location || '—'}</td>
+                              <td className="px-4 py-2 text-gray-300 text-xs">{item.location || 'â€”'}</td>
                               <td className="px-4 py-2 text-white font-medium">{systemUnits}</td>
                               <td className="px-4 py-2">
                                 <input type="number" value={cycleCounts[item.id] || ''}
@@ -778,13 +771,13 @@ export default function Inventory() {
 
                   {cycleVariances.length === 0 && Object.values(cycleCounts).some(v => v !== '') && (
                     <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4 text-center">
-                      <p className="text-green-400 font-medium">✓ No variances found — inventory matches physical count</p>
+                      <p className="text-green-400 font-medium">âœ“ No variances found â€” inventory matches physical count</p>
                     </div>
                   )}
 
                   {cycleSubmitted && (
                     <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4 text-center">
-                      <p className="text-green-400 font-medium">✓ Cycle count complete — {cycleVariances.length} adjustments applied</p>
+                      <p className="text-green-400 font-medium">âœ“ Cycle count complete â€” {cycleVariances.length} adjustments applied</p>
                       <button onClick={() => { setCycleStarted(false); setCycleCounts({}); setCycleVariances([]); setCycleSubmitted(false) }}
                         className="text-green-400 text-sm underline mt-2">
                         Start new count
@@ -798,7 +791,7 @@ export default function Inventory() {
         </div>
       </div>
 
-      {/* ── Adjustment Modal ── */}
+      {/* â”€â”€ Adjustment Modal â”€â”€ */}
       {showAdjModal && adjItem && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-md">
@@ -806,7 +799,7 @@ export default function Inventory() {
               <div>
                 <h3 className="text-white font-semibold">Adjust Inventory</h3>
                 <p className="text-gray-500 text-xs mt-0.5">
-                  {adjItem.sku} · {adjItem.palletId} · Current: {adjItem.units || adjItem.quantity} units
+                  {adjItem.sku} Â· {adjItem.palletId} Â· Current: {adjItem.units || adjItem.quantity} units
                 </p>
               </div>
               <button onClick={() => setShowAdjModal(false)} className="text-gray-400 hover:text-white">
@@ -875,7 +868,7 @@ export default function Inventory() {
         </div>
       )}
 
-      {/* ── Barcode Scanner ── */}
+      {/* â”€â”€ Barcode Scanner â”€â”€ */}
       {showScanner && (
         <BarcodeScanner
           title="Scan to Find Pallet"

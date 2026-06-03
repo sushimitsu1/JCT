@@ -6,7 +6,7 @@ import { db } from '../firebase'
 import {
   LayoutDashboard, Package, PackagePlus, ShoppingCart,
   DollarSign, Users, BarChart3, LogOut, KeyRound, UserCog,
-  Palette, Tag, X, Plus, Menu, MapPin
+  Palette, Tag, X, Plus, Menu, MapPin, ChevronLeft, ChevronRight
 } from 'lucide-react'
 import { useAuth, ROLE_ACCESS } from '../context/AuthContext'
 import { useTheme, THEMES } from '../context/ThemeContext'
@@ -88,6 +88,8 @@ export default function Dashboard() {
 
   const [showThemePicker, setShowThemePicker] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('jct-sidebar-collapsed') === 'true')
+  const toggleSidebar = () => { const v = !sidebarCollapsed; setSidebarCollapsed(v); localStorage.setItem('jct-sidebar-collapsed', String(v)) }
 
   // Global tab system
   const [tabs, setTabs] = useState([{ id: 'tab_dashboard', pageId: 'dashboard', label: 'Dashboard' }])
@@ -196,44 +198,57 @@ export default function Dashboard() {
           <div className="flex-1 bg-black/50" />
         </div>
       )}
-
-      {/* ── Desktop sidebar — hidden on mobile ── */}
+      {/* Desktop sidebar */}
       <div
-        style={{ background: t.sidebar, borderRight: `1px solid ${t.sidebarBorder}` }}
-        className="desktop-sidebar w-56 flex-col flex-shrink-0"
+        style={{ background: t.sidebar, borderRight: `1px solid ${t.sidebarBorder}`, width: sidebarCollapsed ? '56px' : '224px', transition: 'width 0.1s ease' }}
+        className="desktop-sidebar flex-col flex-shrink-0 relative"
       >
-        <div style={{ borderBottom: `1px solid ${t.sidebarBorder}` }} className="px-6 py-5">
-          <h1 style={{ color: t.logo }} className="text-lg font-bold">JCT WMS</h1>
-          <p style={{ color: t.logoSub }} className="text-xs mt-0.5">{userName || 'Admin'}</p>
+        <button onClick={toggleSidebar}
+          style={{ background: t.sidebar, border: `1px solid ${t.sidebarBorder}`, color: t.sidebarText }}
+          className="absolute -right-3 top-7 z-20 w-7 h-7 rounded-full flex items-center justify-center shadow-lg border-2 hover:scale-110 transition-transform"
+          title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+          {sidebarCollapsed ? <ChevronRight size={14}/> : <ChevronLeft size={14}/>}
+        </button>
+        <div style={{ borderBottom: `1px solid ${t.sidebarBorder}` }} className={sidebarCollapsed ? 'px-3 py-5' : 'px-6 py-5'}>
+          {sidebarCollapsed ? (
+            <h1 style={{ color: t.logo }} className="text-sm font-bold text-center">J</h1>
+          ) : (
+            <>
+              <h1 style={{ color: t.logo }} className="text-lg font-bold">JCT WMS</h1>
+              <p style={{ color: t.logoSub }} className="text-xs mt-0.5">{userName || 'Admin'}</p>
+            </>
+          )}
         </div>
-        <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+        <nav className="flex-1 px-2 py-4 space-y-0.5 overflow-y-auto overflow-x-hidden">
           {navItems.map((item) => (
             <button
               key={item.id}
               onClick={() => openTab(item.id)}
+              title={sidebarCollapsed ? item.label : ''}
               style={{
                 background: activePage === item.id ? t.sidebarActiveBg : 'transparent',
                 color: activePage === item.id ? t.sidebarActiveText : t.sidebarText,
               }}
               onMouseEnter={e => { if (activePage !== item.id) e.currentTarget.style.background = t.sidebarHover }}
               onMouseLeave={e => { if (activePage !== item.id) e.currentTarget.style.background = 'transparent' }}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors text-left font-medium"
+              className={`w-full flex items-center gap-3 ${sidebarCollapsed ? 'justify-center px-2' : 'px-3'} py-2.5 rounded-lg text-sm transition-colors text-left font-medium`}
             >
               <item.icon size={16} />
-              {item.label}
+              {!sidebarCollapsed && <span>{item.label}</span>}
             </button>
           ))}
         </nav>
-        <div style={{ borderTop: `1px solid ${t.sidebarBorder}` }} className="px-3 py-4">
+        <div style={{ borderTop: `1px solid ${t.sidebarBorder}` }} className="px-2 py-4">
           <button
             onClick={() => signOut(auth)}
+            title={sidebarCollapsed ? 'Sign out' : ''}
             style={{ color: t.sidebarText }}
             onMouseEnter={e => { e.currentTarget.style.color = t.signOutHover }}
             onMouseLeave={e => { e.currentTarget.style.color = t.sidebarText }}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors"
+            className={`w-full flex items-center gap-3 ${sidebarCollapsed ? 'justify-center px-2' : 'px-3'} py-2.5 rounded-lg text-sm transition-colors`}
           >
             <LogOut size={16} />
-            Sign out
+            {!sidebarCollapsed && <span>Sign out</span>}
           </button>
         </div>
       </div>

@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { collection, addDoc, getDocs, doc, updateDoc, query, orderBy } from 'firebase/firestore'
 import { db } from '../firebase'
 import {
   Plus, X, ShoppingCart, CheckCircle, Clock, XCircle,
   Search, Package, FileText, Check, Pencil, ArrowLeft,
-  Truck, DollarSign, List, ChevronDown, RotateCcw, Filter, X as XIcon
+  Truck, DollarSign, List, ChevronDown, RotateCcw
 } from 'lucide-react'
 import { sendShipmentEmail } from '../email'
 import jsPDF from 'jspdf'
@@ -55,13 +55,6 @@ export default function Orders() {
   const [loading, setLoading] = useState(false)
   const [filterStatus, setFilterStatus] = useState('')
   const [search, setSearch] = useState('')
-  const [filterClient, setFilterClient] = useState('')
-  const [filterDateFrom, setFilterDateFrom] = useState('')
-  const [filterDateTo, setFilterDateTo] = useState('')
-  const [filterReference, setFilterReference] = useState('')
-  const [filtersExpanded, setFiltersExpanded] = useState(() => localStorage.getItem('jct-orders-filters') !== 'collapsed')
-  const toggleFilters = () => { const v = !filtersExpanded; setFiltersExpanded(v); localStorage.setItem('jct-orders-filters', v ? 'expanded' : 'collapsed') }
-  const clearFilters = () => { setFilterStatus(''); setSearch(''); setFilterClient(''); setFilterDateFrom(''); setFilterDateTo(''); setFilterReference('') }
   const [skuSearch, setSkuSearch] = useState({})
   const [skuDropdown, setSkuDropdown] = useState(null)
   const [successMsg, setSuccessMsg] = useState('')
@@ -450,21 +443,10 @@ const revertOrder = async (order) => {
   }
 
   const filtered = orders.filter(o => {
-    if (filterStatus && o.status !== filterStatus) return false
-    if (filterClient && o.clientId !== filterClient) return false
-    if (filterReference && !(o.orderNumber || '').toLowerCase().includes(filterReference.toLowerCase()) &&
-        !(o.transactionId || '').toLowerCase().includes(filterReference.toLowerCase())) return false
-    if (filterDateFrom && o.orderDate && o.orderDate < filterDateFrom) return false
-    if (filterDateTo && o.orderDate && o.orderDate > filterDateTo) return false
-    if (search) {
-      const q = search.toLowerCase()
-      if (!(o.clientName || '').toLowerCase().includes(q) &&
-          !(o.orderNumber || '').toLowerCase().includes(q) &&
-          !(o.transactionId || '').toLowerCase().includes(q)) return false
-    }
-    return true
+    const ms = filterStatus ? o.status === filterStatus : true
+    const mq = search ? o.clientName?.toLowerCase().includes(search.toLowerCase()) || o.orderNumber?.toLowerCase().includes(search.toLowerCase()) : true
+    return ms && mq
   })
-  const activeFilterCount = [filterStatus, filterClient, filterReference, filterDateFrom, filterDateTo, search].filter(Boolean).length
 
   const counts = {
     pending: orders.filter(o => o.status === 'pending').length,
@@ -1060,62 +1042,14 @@ const revertOrder = async (order) => {
           </div>
         ))}
       </div>
-      {/* Collapsible Filter Bar */}
-      <div className="mb-4 bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-800/50">
-          <button onClick={toggleFilters} className="flex items-center gap-2 text-sm text-gray-300 hover:text-white transition-colors">
-            <Filter size={14}/>
-            <span>Filters</span>
-            {activeFilterCount > 0 && (
-              <span className="bg-blue-600/30 text-blue-400 text-xs px-2 py-0.5 rounded-full border border-blue-500/20">{activeFilterCount} active</span>
-            )}
-            <ChevronDown size={14} className={`transition-transform ${filtersExpanded ? '' : '-rotate-90'}`}/>
-          </button>
-          <div className="flex items-center gap-3">
-            <input type="text" placeholder="Quick search..." value={search} onChange={e => setSearch(e.target.value)}
-              className="bg-gray-800 border border-gray-700 text-white text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500 w-48" />
-            {activeFilterCount > 0 && (
-              <button onClick={clearFilters} className="text-xs text-gray-400 hover:text-red-400 flex items-center gap-1">
-                <XIcon size={12}/> Clear all
-              </button>
-            )}
-          </div>
-        </div>
-        {filtersExpanded && (
-          <div className="grid grid-cols-5 gap-3 px-4 py-3">
-            <div>
-              <label className="text-gray-500 text-xs mb-1 block">Client</label>
-              <select value={filterClient} onChange={e => setFilterClient(e.target.value)}
-                className="w-full bg-gray-800 border border-gray-700 text-white text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-blue-500">
-                <option value="">All clients</option>
-                {clients.map(c => <option key={c.id} value={c.id}>{c.companyName}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-gray-500 text-xs mb-1 block">Status</label>
-              <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-                className="w-full bg-gray-800 border border-gray-700 text-white text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-blue-500">
-                <option value="">All statuses</option>
-                {Object.entries(statusConfig).map(([key, val]) => <option key={key} value={key}>{val.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-gray-500 text-xs mb-1 block">Reference / Transaction</label>
-              <input type="text" placeholder="ORD-... or ref #" value={filterReference} onChange={e => setFilterReference(e.target.value)}
-                className="w-full bg-gray-800 border border-gray-700 text-white text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-blue-500" />
-            </div>
-            <div>
-              <label className="text-gray-500 text-xs mb-1 block">Order Date From</label>
-              <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)}
-                className="w-full bg-gray-800 border border-gray-700 text-white text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-blue-500" />
-            </div>
-            <div>
-              <label className="text-gray-500 text-xs mb-1 block">Order Date To</label>
-              <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)}
-                className="w-full bg-gray-800 border border-gray-700 text-white text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-blue-500" />
-            </div>
-          </div>
-        )}
+      <div className="flex gap-3 mb-4">
+        <input type="text" placeholder="Search client or order #..." value={search} onChange={e => setSearch(e.target.value)}
+          className="bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 w-64" />
+        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+          className="bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500">
+          <option value="">All statuses</option>
+          {Object.entries(statusConfig).map(([key, val]) => <option key={key} value={key}>{val.label}</option>)}
+        </select>
       </div>
       <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
         <table className="w-full text-sm">

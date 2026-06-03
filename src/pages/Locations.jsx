@@ -3,7 +3,7 @@ import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc } from 'firebase
 import { db } from '../firebase'
 import {
   Plus, X, Pencil, Trash2, MapPin, Search, Zap,
-  Eye, EyeOff, Package
+  Eye, EyeOff, Package, List, LayoutGrid, Rows3, ChevronDown
 } from 'lucide-react'
 import BulkUpload from '../components/BulkUpload'
 
@@ -32,6 +32,10 @@ export default function Locations() {
   const [search, setSearch] = useState('')
   const [filterType, setFilterType] = useState('')
   const [filterActive, setFilterActive] = useState('active')
+  const [viewMode, setViewMode] = useState(() => localStorage.getItem('jct-locations-view') || 'compact')
+  const [collapsedAisles, setCollapsedAisles] = useState({})
+  const setView = (v) => { setViewMode(v); localStorage.setItem('jct-locations-view', v) }
+  const toggleAisle = (a) => setCollapsedAisles(p => ({ ...p, [a]: !p[a] }))
 
   // Generator form
   const [gen, setGen] = useState({
@@ -174,6 +178,15 @@ export default function Locations() {
     return true
   })
 
+  // Group by aisle for grouped view
+  const byAisle = filtered.reduce((acc, loc) => {
+    const a = loc.aisle || '?'
+    if (!acc[a]) acc[a] = []
+    acc[a].push(loc)
+    return acc
+  }, {})
+  const sortedAisles = Object.keys(byAisle).sort()
+
   const stats = {
     total: locations.length,
     active: locations.filter(l => l.active).length,
@@ -244,80 +257,172 @@ export default function Locations() {
         </select>
       </div>
 
-      {/* Table */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-800 bg-gray-800/50">
-              <th className="text-left px-4 py-3 text-gray-400 text-xs font-medium uppercase">Label</th>
-              <th className="text-left px-4 py-3 text-gray-400 text-xs font-medium uppercase">Aisle</th>
-              <th className="text-left px-4 py-3 text-gray-400 text-xs font-medium uppercase">Bay</th>
-              <th className="text-left px-4 py-3 text-gray-400 text-xs font-medium uppercase">Level</th>
-              <th className="text-left px-4 py-3 text-gray-400 text-xs font-medium uppercase">Type</th>
-              <th className="text-left px-4 py-3 text-gray-400 text-xs font-medium uppercase">Occupancy</th>
-              <th className="text-left px-4 py-3 text-gray-400 text-xs font-medium uppercase">Notes</th>
-              <th className="text-left px-4 py-3 text-gray-400 text-xs font-medium uppercase">Status</th>
-              <th className="px-4 py-3"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr><td colSpan={9} className="text-center text-gray-500 py-12">
-                {locations.length === 0 ? 'No locations yet — use Quick Generator to create A-01 through A-48 in one click' : 'No locations match the current filters'}
-              </td></tr>
-            ) : filtered.map((loc, i) => {
-              const count = occupancyByLabel[loc.label] || 0
-              return (
-                <tr key={loc.id} className={`border-b border-gray-800/50 hover:bg-gray-800/40 transition-colors ${i % 2 === 0 ? '' : 'bg-gray-800/20'} ${!loc.active ? 'opacity-50' : ''}`}>
-                  <td className="px-4 py-3">
-                    <span className="text-blue-400 font-mono font-medium">{loc.label}</span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-300">{loc.aisle}</td>
-                  <td className="px-4 py-3 text-gray-300">{loc.bay}</td>
-                  <td className="px-4 py-3 text-gray-300">{loc.level || '—'}</td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs px-2 py-0.5 rounded-full border ${
-                      loc.type === 'rack'
-                        ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
-                        : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-                    }`}>{loc.type}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    {count > 0 ? (
-                      <span className="text-yellow-400 text-xs flex items-center gap-1">
-                        <Package size={11}/> {count} pallet{count !== 1 ? 's' : ''}
-                      </span>
-                    ) : (
-                      <span className="text-gray-600 text-xs">empty</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-gray-500 text-xs max-w-xs truncate">{loc.notes || '—'}</td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs px-2 py-0.5 rounded-full border ${
-                      loc.active
-                        ? 'bg-green-500/10 text-green-400 border-green-500/20'
-                        : 'bg-gray-500/10 text-gray-400 border-gray-500/20'
-                    }`}>{loc.active ? 'Active' : 'Inactive'}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2 justify-end">
-                      <button onClick={() => toggleActive(loc)} className="text-gray-400 hover:text-white p-1 rounded" title={loc.active ? 'Mark inactive' : 'Mark active'}>
-                        {loc.active ? <EyeOff size={14}/> : <Eye size={14}/>}
-                      </button>
-                      <button onClick={() => handleEdit(loc)} className="text-gray-400 hover:text-white p-1 rounded" title="Edit">
-                        <Pencil size={14}/>
-                      </button>
-                      <button onClick={() => handleDelete(loc.id)} className="text-gray-400 hover:text-red-400 p-1 rounded" title="Delete" disabled={count > 0}>
-                        <Trash2 size={14}/>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+      {/* View mode toggle */}
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-xs text-gray-500">View:</span>
+        <button onClick={() => setView('compact')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors ${
+            viewMode === 'compact' ? 'bg-blue-600/20 text-blue-400 border border-blue-500/20' : 'bg-gray-800/50 text-gray-400 border border-gray-700/50 hover:text-gray-200'
+          }`}>
+          <Rows3 size={12}/> Compact
+        </button>
+        <button onClick={() => setView('grouped')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors ${
+            viewMode === 'grouped' ? 'bg-blue-600/20 text-blue-400 border border-blue-500/20' : 'bg-gray-800/50 text-gray-400 border border-gray-700/50 hover:text-gray-200'
+          }`}>
+          <List size={12}/> Grouped by Aisle
+        </button>
+        <button onClick={() => setView('grid')}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors ${
+            viewMode === 'grid' ? 'bg-blue-600/20 text-blue-400 border border-blue-500/20' : 'bg-gray-800/50 text-gray-400 border border-gray-700/50 hover:text-gray-200'
+          }`}>
+          <LayoutGrid size={12}/> Grid Map
+        </button>
+        <span className="text-xs text-gray-600 ml-2">{filtered.length} shown</span>
       </div>
+
+      {/* ─── COMPACT VIEW (default table, dense rows) ─── */}
+      {viewMode === 'compact' && (
+        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-gray-800 bg-gray-800/50">
+                <th className="text-left px-3 py-2 text-gray-400 font-medium uppercase tracking-wide">Label</th>
+                <th className="text-left px-3 py-2 text-gray-400 font-medium uppercase tracking-wide">Type</th>
+                <th className="text-left px-3 py-2 text-gray-400 font-medium uppercase tracking-wide">Occupancy</th>
+                <th className="text-left px-3 py-2 text-gray-400 font-medium uppercase tracking-wide">Notes</th>
+                <th className="text-left px-3 py-2 text-gray-400 font-medium uppercase tracking-wide">Status</th>
+                <th className="px-3 py-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr><td colSpan={6} className="text-center text-gray-500 py-12">
+                  {locations.length === 0 ? 'No locations yet — use Quick Generator to create A-01 through A-48 in one click' : 'No locations match the current filters'}
+                </td></tr>
+              ) : filtered.map((loc, i) => {
+                const count = occupancyByLabel[loc.label] || 0
+                return (
+                  <tr key={loc.id} className={`border-b border-gray-800/30 hover:bg-gray-800/40 ${!loc.active ? 'opacity-50' : ''}`}>
+                    <td className="px-3 py-1.5"><span className="text-blue-400 font-mono font-medium">{loc.label}</span></td>
+                    <td className="px-3 py-1.5">
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                        loc.type === 'rack' ? 'bg-purple-500/10 text-purple-400' : 'bg-blue-500/10 text-blue-400'
+                      }`}>{loc.type}</span>
+                    </td>
+                    <td className="px-3 py-1.5">
+                      {count > 0 ? <span className="text-yellow-400">{count} plt</span> : <span className="text-gray-600">empty</span>}
+                    </td>
+                    <td className="px-3 py-1.5 text-gray-500 max-w-xs truncate">{loc.notes || '—'}</td>
+                    <td className="px-3 py-1.5">
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                        loc.active ? 'bg-green-500/10 text-green-400' : 'bg-gray-500/10 text-gray-400'
+                      }`}>{loc.active ? 'Active' : 'Inactive'}</span>
+                    </td>
+                    <td className="px-3 py-1.5">
+                      <div className="flex items-center gap-1 justify-end">
+                        <button onClick={() => toggleActive(loc)} className="text-gray-400 hover:text-white p-1" title={loc.active ? 'Mark inactive' : 'Mark active'}>
+                          {loc.active ? <EyeOff size={12}/> : <Eye size={12}/>}
+                        </button>
+                        <button onClick={() => handleEdit(loc)} className="text-gray-400 hover:text-white p-1" title="Edit">
+                          <Pencil size={12}/>
+                        </button>
+                        <button onClick={() => handleDelete(loc.id)} className="text-gray-400 hover:text-red-400 p-1" title="Delete" disabled={count > 0}>
+                          <Trash2 size={12}/>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ─── GROUPED VIEW (collapsible by aisle) ─── */}
+      {viewMode === 'grouped' && (
+        <div className="space-y-2">
+          {sortedAisles.length === 0 ? (
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500 text-sm">
+              No locations match the current filters
+            </div>
+          ) : sortedAisles.map(aisle => {
+            const aisleLocs = byAisle[aisle]
+            const occ = aisleLocs.filter(l => (occupancyByLabel[l.label] || 0) > 0).length
+            const isCollapsed = collapsedAisles[aisle]
+            return (
+              <div key={aisle} className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+                <button onClick={() => toggleAisle(aisle)}
+                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-800/40 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <ChevronDown size={14} className={`text-gray-400 transition-transform ${isCollapsed ? '-rotate-90' : ''}`}/>
+                    <span className="text-white font-semibold text-sm">Aisle {aisle}</span>
+                    <span className="text-xs text-gray-500">{aisleLocs.length} location{aisleLocs.length !== 1 ? 's' : ''}</span>
+                    {occ > 0 && <span className="text-xs text-yellow-400">· {occ} occupied</span>}
+                  </div>
+                </button>
+                {!isCollapsed && (
+                  <div className="border-t border-gray-800 p-3 grid grid-cols-8 gap-2">
+                    {aisleLocs.map(loc => {
+                      const count = occupancyByLabel[loc.label] || 0
+                      return (
+                        <button key={loc.id} onClick={() => handleEdit(loc)}
+                          className={`text-xs rounded px-2 py-1.5 border text-left transition-colors ${
+                            !loc.active ? 'border-gray-800 bg-gray-800/30 opacity-50' :
+                            count > 0 ? 'border-yellow-500/30 bg-yellow-500/5 hover:bg-yellow-500/10' :
+                            'border-gray-700 bg-gray-800/50 hover:bg-gray-700/50'
+                          }`}>
+                          <div className={`font-mono font-medium ${loc.type === 'rack' ? 'text-purple-400' : 'text-blue-400'}`}>{loc.label}</div>
+                          <div className={`text-[10px] ${count > 0 ? 'text-yellow-400' : 'text-gray-600'}`}>
+                            {count > 0 ? `${count} plt` : 'empty'}
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* ─── GRID MAP VIEW ─── */}
+      {viewMode === 'grid' && (
+        <div className="space-y-3">
+          {sortedAisles.length === 0 ? (
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-12 text-center text-gray-500 text-sm">
+              No locations match the current filters
+            </div>
+          ) : sortedAisles.map(aisle => {
+            const aisleLocs = byAisle[aisle]
+            return (
+              <div key={aisle} className="bg-gray-900 border border-gray-800 rounded-xl p-3">
+                <div className="text-xs text-gray-400 mb-2 font-medium">Aisle {aisle}</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {aisleLocs.map(loc => {
+                    const count = occupancyByLabel[loc.label] || 0
+                    return (
+                      <button key={loc.id} onClick={() => handleEdit(loc)}
+                        title={`${loc.label} — ${count > 0 ? count + ' pallet(s)' : 'empty'}${loc.notes ? ' — ' + loc.notes : ''}`}
+                        className={`w-14 h-12 rounded text-[10px] flex flex-col items-center justify-center border transition-all hover:scale-110 ${
+                          !loc.active ? 'border-gray-800 bg-gray-800/30 opacity-30' :
+                          count > 0 ? 'border-yellow-500/40 bg-yellow-500/10 text-yellow-400' :
+                          loc.type === 'rack' ? 'border-purple-500/20 bg-purple-500/5 text-purple-300' :
+                          'border-blue-500/20 bg-blue-500/5 text-blue-300'
+                        }`}>
+                        <div className="font-mono font-medium">{loc.label}</div>
+                        {count > 0 && <div className="text-[9px]">{count} plt</div>}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {/* ─── ADD / EDIT MODAL ─── */}
       {showModal && (
