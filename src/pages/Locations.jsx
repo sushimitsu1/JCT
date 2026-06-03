@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import {
@@ -43,8 +43,8 @@ export default function Locations() {
     bayStart: '01',
     bayEnd: '48',
     type: 'floor',
-    levelStart: '',
-    levelEnd: '',
+    levelStart: '01',
+    levelEnd: '04',
   })
 
   const fetchData = async () => {
