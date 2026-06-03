@@ -9,6 +9,7 @@ import {
 import { sendShipmentEmail } from '../email'
 import jsPDF from 'jspdf'
 import BarcodeScanner from '../components/BarcodeScanner'
+import BulkUpload from '../components/BulkUpload'
 import TransactionCharges from '../components/TransactionCharges'
 
 const emptyShipTo = {
@@ -46,6 +47,7 @@ export default function Orders() {
   const [activeTabId, setActiveTabId] = useState(null)
 
   const [view, setView] = useState('list')
+  const [showBulkUpload, setShowBulkUpload] = useState(false)
   const [selectedOrder, setSelectedOrder] = useState(null)
   const [activeTab, setActiveTab] = useState('details')
   const [editOrderId, setEditOrderId] = useState(null)
@@ -113,21 +115,28 @@ export default function Orders() {
     const order = orders.find(o => o.id === tab.id)
     if (order) { setSelectedOrder(order); setView('detail'); setActiveTab('details') }
   }
-
-  const availableSkusFor = (clientId) => {
+  const availableSkusFor = (clientId, excludeIdx = null) => {
     const inv = inventory.filter(i => i.clientId === clientId && (i.status || 'available') === 'available')
-    return Object.values(inv.reduce((acc, item) => {
+    const skuMap = inv.reduce((acc, item) => {
       const sku = item.sku
       if (!acc[sku]) acc[sku] = { sku, description: item.description || '', totalUnits: 0, pallets: [] }
       acc[sku].totalUnits += Number(item.units || item.quantity || 0)
       acc[sku].pallets.push(item)
       return acc
-    }, {}))
+    }, {})
+    // Subtract already-allocated quantities from current form line items
+    ;(form.items || []).forEach((it, i) => {
+      if (excludeIdx !== null && i === excludeIdx) return
+      if (it.sku && skuMap[it.sku]) {
+        skuMap[it.sku].totalUnits = Math.max(0, skuMap[it.sku].totalUnits - Number(it.pieces || 0))
+      }
+    })
+    return Object.values(skuMap)
   }
 
   const getFilteredSkus = (idx) => {
     const s = (skuSearch[idx] || '').toLowerCase()
-    const all = availableSkusFor(form.clientId)
+    const all = availableSkusFor(form.clientId, idx)
     if (!s) return all
     return all.filter(i => i.sku.toLowerCase().includes(s) || i.description.toLowerCase().includes(s))
   }
@@ -305,7 +314,7 @@ const revertOrder = async (order) => {
       await applyAllocation(newAlloc, order.id)
       await updateDoc(doc(db, 'orders', order.id), { status: 'pending', inventoryAllocations: newAlloc, revertedAt: new Date().toISOString() })
       fetchData()
-      setSuccessMsg('Order reverted to Pending — inventory restored')
+      setSuccessMsg('Order reverted to Pending � inventory restored')
       setTimeout(() => setSuccessMsg(''), 3000)
     } catch (err) { console.error(err) }
     setLoading(false)
@@ -321,7 +330,7 @@ const revertOrder = async (order) => {
       const skuAllocs = allocationSnapshot.filter(a => a.sku === orderItem.sku)
       const palletAllocs = skuAllocs.map(a => {
         const invItem = inventory.find(i => i.id === a.inventoryId)
-        return { palletId: a.palletId || a.inventoryId, location: invItem?.location || '—', units: a.unitsAllocated, cartons: piecesPerCarton > 0 ? Math.ceil(a.unitsAllocated / piecesPerCarton) : 0, piecesPerCarton, receivedDate: invItem?.receivedDate, selected: true, scanned: false, inventoryId: a.inventoryId }
+        return { palletId: a.palletId || a.inventoryId, location: invItem?.location || '�', units: a.unitsAllocated, cartons: piecesPerCarton > 0 ? Math.ceil(a.unitsAllocated / piecesPerCarton) : 0, piecesPerCarton, receivedDate: invItem?.receivedDate, selected: true, scanned: false, inventoryId: a.inventoryId }
       })
       return { sku: orderItem.sku, description: orderItem.description, qtyOrdered: totalPiecesNeeded, totalCartons: piecesPerCarton > 0 ? Math.ceil(totalPiecesNeeded / piecesPerCarton) : 0, piecesPerCarton, pallets: palletAllocs, shortfall: Math.max(0, totalPiecesNeeded - palletAllocs.reduce((s, p) => s + p.units, 0)), order }
     })
@@ -364,7 +373,7 @@ const revertOrder = async (order) => {
       pdf.setFontSize(9); pdf.setTextColor(27, 42, 74); pdf.setFont('helvetica', 'normal')
       pdf.text('Warehouse: JCT LOGISTICS INC.', 14, 35)
       pdf.setTextColor(200, 16, 46); pdf.setFontSize(13); pdf.setFont('helvetica', 'bold')
-      pdf.text(`Transaction # : ${order?.orderNumber || order?.id?.slice(-6) || '—'}`, pw - 14, 28, { align: 'right' })
+      pdf.text(`Transaction # : ${order?.orderNumber || order?.id?.slice(-6) || '�'}`, pw - 14, 28, { align: 'right' })
       const st = order?.shipTo
       pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8); pdf.setTextColor(27, 42, 74)
       pdf.text('Ship To', 14, 43); pdf.setFont('helvetica', 'bold'); pdf.setFontSize(9)
@@ -375,10 +384,10 @@ const revertOrder = async (order) => {
       pdf.text('Reference # :', pw - 80, 43); pdf.text('Entered Date :', pw - 80, 50)
       pdf.text('Carrier :', pw - 80, 57); pdf.text('Tracking # :', pw - 80, 64)
       pdf.setTextColor(27, 42, 74); pdf.setFont('helvetica', 'bold')
-      pdf.text(order?.orderNumber || '—', pw - 14, 43, { align: 'right' })
-      pdf.text(order?.orderDate || '—', pw - 14, 50, { align: 'right' })
-      pdf.text(order?.carrier?.carrier || '—', pw - 14, 57, { align: 'right' })
-      pdf.text(order?.carrier?.trackingNumber || '—', pw - 14, 64, { align: 'right' })
+      pdf.text(order?.orderNumber || '�', pw - 14, 43, { align: 'right' })
+      pdf.text(order?.orderDate || '�', pw - 14, 50, { align: 'right' })
+      pdf.text(order?.carrier?.carrier || '�', pw - 14, 57, { align: 'right' })
+      pdf.text(order?.carrier?.trackingNumber || '�', pw - 14, 64, { align: 'right' })
       pdf.setDrawColor(200, 16, 46); pdf.setLineWidth(0.5); pdf.line(14, 70, pw - 14, 70); y = 78
     }
     drawHeader()
@@ -405,10 +414,10 @@ const revertOrder = async (order) => {
         pdf.rect(14, y, pw - 28, 8, 'F'); pdf.setDrawColor(235, 235, 235); pdf.rect(14, y, pw - 28, 8)
         pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7); pdf.setTextColor(80, 80, 80)
         pdf.text('  Details:', 16, y + 5)
-        if (pallet.location !== '—') pdf.text(`Loc: ${pallet.location}`, 38, y + 5)
+        if (pallet.location !== '�') pdf.text(`Loc: ${pallet.location}`, 38, y + 5)
         pdf.text(`Pallet: ${pallet.palletId}`, 75, y + 5); pdf.text(`Qty (Each): ${pallet.units}`, 115, y + 5)
         pdf.text(`Cartons: ${pallet.cartons}`, 155, y + 5)
-        if (pallet.scanned) { pdf.setTextColor(22, 163, 74); pdf.text('âœ“ Scanned', pw - 16, y + 5, { align: 'right' }) }
+        if (pallet.scanned) { pdf.setTextColor(22, 163, 74); pdf.text('✓ Scanned', pw - 16, y + 5, { align: 'right' }) }
         y += 8
       })
     })
@@ -448,9 +457,9 @@ const revertOrder = async (order) => {
   const inputCls = "w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500"
   const labelCls = "text-gray-400 text-xs mb-1 block"
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════════════════════════════
   // FORM VIEW
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════════════════════════════
   if (view === 'new' || view === 'edit') {
     const skuList = availableSkusFor(form.clientId)
     return (
@@ -551,10 +560,11 @@ const revertOrder = async (order) => {
                   <div className="col-span-2">Pieces *</div><div className="col-span-2">Cartons (auto)</div><div className="col-span-1">Avail.</div>
                 </div>
                 {form.items.map((item, i) => {
+                  const liveAvail = item.sku ? (availableSkusFor(form.clientId, i).find(s => s.sku === item.sku)?.totalUnits || 0) : 0
                   const catalog = catalogItems.find(c => c.clientId === form.clientId && c.sku === item.sku)
                   const ppc = Number(catalog?.piecesPerCarton || 0)
-                  const cartons = ppc > 0 && item.pieces ? Math.ceil(Number(item.pieces) / ppc) : '—'
-                  const over = item.availableUnits > 0 && Number(item.pieces) > item.availableUnits
+                  const cartons = ppc > 0 && item.pieces ? Math.ceil(Number(item.pieces) / ppc) : '�'
+                  const over = liveAvail > 0 && Number(item.pieces) > liveAvail
                   return (
                     <div key={i} className="grid grid-cols-12 gap-3 items-center mb-2">
                       <div className="col-span-3 relative">
@@ -589,8 +599,8 @@ const revertOrder = async (order) => {
                         {cartons} {ppc > 0 && <span className="text-xs text-gray-600">({ppc}/ctn)</span>}
                       </div>
                       <div className="col-span-1 flex items-center justify-between">
-                        <span className={`text-xs font-medium ${item.availableUnits > 0 ? 'text-green-400' : item.sku ? 'text-red-400' : 'text-gray-600'}`}>
-                          {item.availableUnits || (item.sku ? '0' : '—')}
+                        <span className={`text-xs font-medium ${liveAvail > 0 ? 'text-green-400' : item.sku ? 'text-red-400' : 'text-gray-600'}`}>
+                          {liveAvail || (item.sku ? '0' : '-')}
                         </span>
                         <button onClick={() => removeItem(i)} className="text-gray-600 hover:text-red-400 ml-2"><X size={14} /></button>
                       </div>
@@ -598,7 +608,7 @@ const revertOrder = async (order) => {
                   )
                 })}
                 {form.items.some(item => item.availableUnits > 0 && Number(item.pieces) > item.availableUnits) && (
-                  <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs rounded-lg px-3 py-2 mt-2">âš ï¸ One or more items exceed available inventory</div>
+                  <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs rounded-lg px-3 py-2 mt-2">⚠️ One or more items exceed available inventory</div>
                 )}
                 <div className="border-t border-gray-800 mt-4 pt-3 flex justify-end gap-8 text-sm">
                   <span className="text-gray-400">Total Pieces: <span className="text-white font-medium">{form.items.reduce((s, i) => s + Number(i.pieces || 0), 0)}</span></span>
@@ -656,9 +666,9 @@ const revertOrder = async (order) => {
     )
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════════════════════════════
   // DETAIL VIEW
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════════════════════════════
   if (view === 'detail' && selectedOrder) {
     const order = orders.find(o => o.id === selectedOrder.id) || selectedOrder
     const status = statusConfig[order.status] || statusConfig.pending
@@ -676,7 +686,7 @@ const revertOrder = async (order) => {
               <div key={tab.id} onClick={() => switchTab(tab)}
                 className={`flex items-center gap-2 px-3 py-2 text-xs cursor-pointer border-b-2 transition-colors ${activeTabId === tab.id ? 'border-blue-500 text-blue-400 bg-blue-500/5' : 'border-transparent text-gray-400 hover:text-white hover:border-gray-600'}`}>
                 <Pencil size={10} />
-                <span className="max-w-32 truncate">{tab.orderNumber} — {tab.clientName}</span>
+                <span className="max-w-32 truncate">{tab.orderNumber} � {tab.clientName}</span>
                 <button onClick={e => closeTab(e, tab.id)} className="text-gray-600 hover:text-red-400 ml-1"><X size={11} /></button>
               </div>
             ))}
@@ -744,10 +754,10 @@ const revertOrder = async (order) => {
         <div className="grid grid-cols-6 gap-3 mb-4">
           {[
             { label: 'Client',        value: order.clientName },
-            { label: 'Reference #',   value: order.orderNumber || '—' },
+            { label: 'Reference #',   value: order.orderNumber || '�' },
             { label: 'Order Date',    value: order.orderDate },
-            { label: 'Ship Date',     value: order.earliestShipDate || '—' },
-            { label: 'Cancel Date',   value: order.cancelDate || '—' },
+            { label: 'Ship Date',     value: order.earliestShipDate || '�' },
+            { label: 'Cancel Date',   value: order.cancelDate || '�' },
             { label: 'Total Charges', value: `$${Number(order.totalCharges || 0).toFixed(2)}` },
           ].map(f => (
             <div key={f.label} className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3">
@@ -777,16 +787,16 @@ const revertOrder = async (order) => {
             {order.shipTo?.company ? (
               <div className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
                 {[
-                  ['Company', order.shipTo?.company], ['Recipient', order.shipTo?.recipient || '—'],
-                  ['Address 1', order.shipTo?.address1 || '—'], ['Address 2', order.shipTo?.address2 || '—'],
-                  ['City', order.shipTo?.city || '—'], ['State / ZIP', `${order.shipTo?.state || ''} ${order.shipTo?.zip || ''}`.trim() || '—'],
-                  ['Phone', order.shipTo?.phone || '—'], ['Email', order.shipTo?.email || '—'],
+                  ['Company', order.shipTo?.company], ['Recipient', order.shipTo?.recipient || '�'],
+                  ['Address 1', order.shipTo?.address1 || '�'], ['Address 2', order.shipTo?.address2 || '�'],
+                  ['City', order.shipTo?.city || '�'], ['State / ZIP', `${order.shipTo?.state || ''} ${order.shipTo?.zip || ''}`.trim() || '�'],
+                  ['Phone', order.shipTo?.phone || '�'], ['Email', order.shipTo?.email || '�'],
                 ].map(([label, value]) => (
                   <div key={label}><span className="text-gray-500 text-xs">{label}</span><p className="text-white">{value}</p></div>
                 ))}
               </div>
             ) : (
-              <p className="text-gray-500 text-sm">No shipping destination — edit order to add</p>
+              <p className="text-gray-500 text-sm">No shipping destination � edit order to add</p>
             )}
             {order.notes && <div className="mt-4 pt-4 border-t border-gray-800"><span className="text-gray-500 text-xs">Notes</span><p className="text-white text-sm mt-1">{order.notes}</p></div>}
           </div>
@@ -806,7 +816,7 @@ const revertOrder = async (order) => {
                 {(order.items || []).map((item, i) => {
                   const cat = catalogItems.find(c => c.clientId === order.clientId && c.sku === item.sku)
                   const ppc = Number(cat?.piecesPerCarton || 1)
-                  const cartons = ppc > 0 ? Math.ceil(Number(item.pieces || item.quantity || 0) / ppc) : '—'
+                  const cartons = ppc > 0 ? Math.ceil(Number(item.pieces || item.quantity || 0) / ppc) : '�'
                   const avail = availableSkusFor(order.clientId).find(s => s.sku === item.sku)
                   return (
                     <tr key={i} className={`border-b border-gray-800/50 ${i % 2 === 0 ? '' : 'bg-gray-800/10'}`}>
@@ -838,7 +848,7 @@ const revertOrder = async (order) => {
                     onKeyDown={async e => { if (e.key === 'Enter' && e.target.value) { await updateDoc(doc(db, 'orders', order.id), { 'carrier.trackingNumber': e.target.value }); fetchData() } }} />
                 </div>
                 <div className="px-4 py-3 bg-yellow-500/5 border-t border-yellow-500/20 text-yellow-400 text-xs">
-                  âš ï¸ Clicking "Ship & Close Order" will deduct allocated quantities from inventory using FIFO
+                  ⚠️ Clicking "Ship & Close Order" will deduct allocated quantities from inventory using FIFO
                 </div>
               </>
             )}
@@ -850,7 +860,7 @@ const revertOrder = async (order) => {
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
               <h3 className="text-white font-medium mb-4">Carrier Information</h3>
               <div className="grid grid-cols-3 gap-x-8 gap-y-3 text-sm">
-                {[['Carrier', order.carrier?.carrier || '—'], ['SCAC', order.carrier?.scac || '—'], ['Service', order.carrier?.service || '—'], ['Billing', order.carrier?.billingType || '—'], ['Account #', order.carrier?.accountNumber || '—'], ['Tracking #', order.carrier?.trackingNumber || '—']].map(([label, value]) => (
+                {[['Carrier', order.carrier?.carrier || '�'], ['SCAC', order.carrier?.scac || '�'], ['Service', order.carrier?.service || '�'], ['Billing', order.carrier?.billingType || '�'], ['Account #', order.carrier?.accountNumber || '�'], ['Tracking #', order.carrier?.trackingNumber || '�']].map(([label, value]) => (
                   <div key={label}><span className="text-gray-500 text-xs">{label}</span><p className="text-white">{value}</p></div>
                 ))}
               </div>
@@ -858,7 +868,7 @@ const revertOrder = async (order) => {
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
               <h3 className="text-white font-medium mb-4">Routing</h3>
               <div className="grid grid-cols-3 gap-x-8 gap-y-3 text-sm">
-                {[['Load #', order.carrier?.loadNumber || '—'], ['BOL #', order.carrier?.bolNumber || '—'], ['Trailer #', order.carrier?.trailerNumber || '—'], ['Seal #', order.carrier?.sealNumber || '—'], ['Door', order.carrier?.door || '—'], ['Pickup Date', order.carrier?.pickupDate || '—']].map(([label, value]) => (
+                {[['Load #', order.carrier?.loadNumber || '�'], ['BOL #', order.carrier?.bolNumber || '�'], ['Trailer #', order.carrier?.trailerNumber || '�'], ['Seal #', order.carrier?.sealNumber || '�'], ['Door', order.carrier?.door || '�'], ['Pickup Date', order.carrier?.pickupDate || '�']].map(([label, value]) => (
                   <div key={label}><span className="text-gray-500 text-xs">{label}</span><p className="text-white">{value}</p></div>
                 ))}
                 {order.carrier?.warehouseInstructions && <div className="col-span-3"><span className="text-gray-500 text-xs">Warehouse Instructions</span><p className="text-white mt-1">{order.carrier.warehouseInstructions}</p></div>}
@@ -893,14 +903,14 @@ const revertOrder = async (order) => {
                 <div>
                   <h3 className="text-white font-semibold">Pick Ticket</h3>
                   <p className="text-gray-500 text-xs mt-0.5">
-                    FIFO allocated Â· {allocations.reduce((s, a) => s + a.pallets.filter(p => p.selected).length, 0)} pallets
-                    {scannedPallets.length > 0 && <span className="text-green-400 ml-2">Â· {scannedPallets.length} scanned</span>}
+                    FIFO allocated · {allocations.reduce((s, a) => s + a.pallets.filter(p => p.selected).length, 0)} pallets
+                    {scannedPallets.length > 0 && <span className="text-green-400 ml-2">· {scannedPallets.length} scanned</span>}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
                   <button onClick={() => setShowScanner(true)}
                     className="flex items-center gap-1.5 text-sm bg-purple-600/20 hover:bg-purple-600/40 text-purple-400 border border-purple-600/20 px-3 py-1.5 rounded-lg transition-colors">
-                    ðŸ“· Scan Pallet
+                    📷 Scan Pallet
                   </button>
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input type="checkbox" checked={manualMode} onChange={e => setManualMode(e.target.checked)} className="w-3.5 h-3.5 accent-purple-500" />
@@ -952,10 +962,10 @@ const revertOrder = async (order) => {
                                 </td>
                               )}
                               <td className="px-4 py-2 text-blue-400 font-mono">
-                                <div className="flex items-center gap-2">{pallet.palletId}{pallet.scanned && <span className="text-green-400 text-xs font-normal">âœ“ Scanned</span>}</div>
+                                <div className="flex items-center gap-2">{pallet.palletId}{pallet.scanned && <span className="text-green-400 text-xs font-normal">✓ Scanned</span>}</div>
                               </td>
                               <td className="px-4 py-2 text-white font-medium">{pallet.location}</td>
-                              <td className="px-4 py-2 text-gray-400">{pallet.receivedDate || '—'}</td>
+                              <td className="px-4 py-2 text-gray-400">{pallet.receivedDate || '�'}</td>
                               <td className="px-4 py-2 text-white">{pallet.units}</td>
                               <td className="px-4 py-2 text-gray-300">{pallet.cartons}</td>
                               <td className="px-4 py-2">{pallet.scanned ? <span className="text-xs bg-green-500/10 text-green-400 px-2 py-0.5 rounded-full">Scanned</span> : <span className="text-xs text-gray-500">Pending</span>}</td>
@@ -972,7 +982,7 @@ const revertOrder = async (order) => {
                   <span className="text-gray-400">Pieces: <span className="text-white font-semibold">{allocations.reduce((s, a) => s + a.pallets.filter(p => p.selected).reduce((ss, p) => ss + p.units, 0), 0)}</span></span>
                   <span className="text-gray-400">Cartons: <span className="text-white font-semibold">{allocations.reduce((s, a) => s + a.pallets.filter(p => p.selected).reduce((ss, p) => ss + p.cartons, 0), 0)}</span></span>
                   <span className="text-gray-400">Pallets: <span className="text-white font-semibold">{allocations.reduce((s, a) => s + a.pallets.filter(p => p.selected).length, 0)}</span></span>
-                  {scannedPallets.length > 0 && <span className="text-green-400">âœ“ {scannedPallets.length} scanned</span>}
+                  {scannedPallets.length > 0 && <span className="text-green-400">✓ {scannedPallets.length} scanned</span>}
                 </div>
                 <div className="flex gap-3">
                   <button onClick={() => setShowPickModal(false)} className="px-4 py-2 text-sm text-gray-400 hover:text-white">Close</button>
@@ -992,9 +1002,9 @@ const revertOrder = async (order) => {
     )
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════════════════════════════
   // LIST VIEW
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════════════════════════════
   return (
     <div className="p-6">
       {openTabs.length > 0 && (
@@ -1004,7 +1014,7 @@ const revertOrder = async (order) => {
             <div key={tab.id} onClick={() => switchTab(tab)}
               className="flex items-center gap-2 px-3 py-2 text-xs cursor-pointer border-b-2 border-transparent text-gray-400 hover:text-white hover:border-gray-600 transition-colors">
               <Pencil size={10} />
-              <span className="max-w-32 truncate">{tab.orderNumber} — {tab.clientName}</span>
+              <span className="max-w-32 truncate">{tab.orderNumber} � {tab.clientName}</span>
               <button onClick={e => closeTab(e, tab.id)} className="text-gray-600 hover:text-red-400 ml-1"><X size={11} /></button>
             </div>
           ))}
@@ -1015,9 +1025,14 @@ const revertOrder = async (order) => {
           <h2 className="text-xl font-semibold text-white">Orders</h2>
           <p className="text-sm text-gray-500 mt-0.5">{orders.length} total orders</p>
         </div>
+        <div className="flex gap-2">
+          <button onClick={() => setShowBulkUpload(true)} className="flex items-center gap-2 bg-purple-600/20 hover:bg-purple-600/40 text-purple-400 border border-purple-500/20 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
+            Bulk Upload
+          </button>
         <button onClick={openNew} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
           <Plus size={16} /> New Order
         </button>
+        </div>
       </div>
       <div className="grid grid-cols-3 gap-4 mb-6">
         {[{ label: 'Pending', value: counts.pending, color: 'text-yellow-400' }, { label: 'Picking', value: counts.picking, color: 'text-blue-400' }, { label: 'Shipped', value: counts.shipped, color: 'text-green-400' }].map(card => (
@@ -1059,8 +1074,8 @@ const revertOrder = async (order) => {
                     <td className="px-4 py-3 text-blue-400 text-xs font-mono">{order.transactionId || "-"}</td>
                   <td className="px-4 py-3 text-gray-300 text-xs">{order.orderDate || new Date(order.createdAt).toLocaleDateString()}</td>
                   <td className="px-4 py-3 text-white font-medium">{order.clientName}</td>
-                  <td className="px-4 py-3 text-blue-400 text-xs font-mono">{order.orderNumber || '—'}</td>
-                  <td className="px-4 py-3 text-gray-300 text-xs max-w-xs truncate">{order.shipTo?.company || order.shipTo?.address1 || '—'}</td>
+                  <td className="px-4 py-3 text-blue-400 text-xs font-mono">{order.orderNumber || '�'}</td>
+                  <td className="px-4 py-3 text-gray-300 text-xs max-w-xs truncate">{order.shipTo?.company || order.shipTo?.address1 || '�'}</td>
                   <td className="px-4 py-3 text-gray-300 text-xs">{order.items?.length || 0}</td>
                   <td className="px-4 py-3 text-gray-300 text-xs">{order.totalUnits || 0}</td>
                   <td className="px-4 py-3 text-gray-300 text-xs">${Number(order.totalCharges || 0).toFixed(2)}</td>
@@ -1075,6 +1090,9 @@ const revertOrder = async (order) => {
           </tbody>
         </table>
       </div>
+      {showBulkUpload && (
+        <BulkUpload type="orders" onClose={() => setShowBulkUpload(false)} onSuccess={fetchData} />
+      )}
     </div>
   )
 }

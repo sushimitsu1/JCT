@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc } from 'firebase/firestore'
 import { db } from '../firebase'
+import BulkUpload from '../components/BulkUpload'
 import { Plus, X, Pencil, Trash2, Package, Search } from 'lucide-react'
 
 const RATE_TYPES = [
@@ -23,6 +24,7 @@ const emptyForm = {
 
 export default function Items() {
   const [items, setItems] = useState([])
+  const [showBulkUpload, setShowBulkUpload] = useState(false)
   const [clients, setClients] = useState([])
   const [showModal, setShowModal] = useState(false)
   const [form, setForm] = useState(emptyForm)
@@ -112,6 +114,10 @@ export default function Items() {
           <h2 className="text-xl font-semibold text-white">Items / SKU Catalog</h2>
           <p className="text-sm text-gray-500 mt-0.5">{items.length} total SKUs across all clients</p>
         </div>
+        <div className="flex gap-2">
+          <button onClick={() => setShowBulkUpload(true)} className="flex items-center gap-2 bg-purple-600/20 hover:bg-purple-600/40 text-purple-400 border border-purple-500/20 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
+            Bulk Upload
+          </button>
         <button
           onClick={() => { setForm(emptyForm); setEditId(null); setShowModal(true) }}
           className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
@@ -119,6 +125,7 @@ export default function Items() {
           <Plus size={16} />
           Add SKU
         </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -163,7 +170,7 @@ export default function Items() {
               <tr>
                 <td colSpan={8} className="text-center py-12">
                   <Package size={32} className="text-gray-700 mx-auto mb-3" />
-                  <p className="text-gray-500 text-sm">No SKUs yet â€” click Add SKU to create your first item</p>
+                  <p className="text-gray-500 text-sm">No SKUs yet — click Add SKU to create your first item</p>
                 </td>
               </tr>
             ) : filtered.map((item, i) => (
@@ -176,21 +183,21 @@ export default function Items() {
                 <td className="px-4 py-3 text-gray-300 text-sm">{item.clientName}</td>
                 <td className="px-4 py-3 text-gray-400 text-xs">
                   {item.length && item.width && item.height
-                    ? `${item.length}"Ã—${item.width}"Ã—${item.height}"`
-                    : 'â€”'}
+                    ? `${item.length}"×${item.width}"×${item.height}"`
+                    : '—'}
                   {item.weight ? <span className="ml-1 text-gray-500">{item.weight}lb</span> : ''}
                 </td>
-                <td className="px-4 py-3 text-gray-300 text-sm">{item.unitsPerPallet || 'â€”'}</td>
+                <td className="px-4 py-3 text-gray-300 text-sm">{item.unitsPerPallet || '—'}</td>
                 <td className="px-4 py-3">
                   {item.storageRate ? (
                     <div>
                       <span className="text-white font-medium">${item.storageRate}</span>
                       <span className="text-gray-500 text-xs ml-1">/ {getRateLabel(item.storageRateType)}</span>
                     </div>
-                  ) : 'â€”'}
+                  ) : '—'}
                 </td>
                 <td className="px-4 py-3 text-gray-300 text-sm">
-                  {item.minMonthlyCharge ? `$${item.minMonthlyCharge}` : 'â€”'}
+                  {item.minMonthlyCharge ? `$${item.minMonthlyCharge}` : '—'}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2 justify-end">
@@ -251,7 +258,7 @@ export default function Items() {
                     value={form.description}
                     onChange={e => setForm({ ...form, description: e.target.value })}
                     className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500"
-                    placeholder="CAL KING (72Ã—84Ã—15)"
+                    placeholder="CAL KING (72×84×15)"
                   />
                 </div>
                 <div>
@@ -350,7 +357,7 @@ export default function Items() {
                 {/* Live preview */}
                 {form.storageRate && (
                   <div className="bg-gray-800 rounded-lg px-3 py-2 text-xs text-gray-400">
-                    ðŸ’¡ This SKU will be charged <span className="text-white font-medium">${form.storageRate}</span> per {getRateLabel(form.storageRateType).toLowerCase()} per month
+                    ?? This SKU will be charged <span className="text-white font-medium">${form.storageRate}</span> per {getRateLabel(form.storageRateType).toLowerCase()} per month
                     {form.minMonthlyCharge ? `, with a minimum of $${form.minMonthlyCharge}` : ''}
                   </div>
                 )}
@@ -383,6 +390,9 @@ export default function Items() {
             </div>
           </div>
         </div>
+      )}
+      {showBulkUpload && (
+        <BulkUpload type="items" onClose={() => setShowBulkUpload(false)} onSuccess={fetchData} />
       )}
     </div>
   )

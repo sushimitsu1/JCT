@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import BarcodeScanner from '../components/BarcodeScanner'
 import TransactionCharges from '../components/TransactionCharges'
+import BulkUpload from '../components/BulkUpload'
 
 const generatePalletId = () => {
   const now = new Date()
@@ -45,6 +46,7 @@ export default function Receiving() {
   const [catalogItems, setCatalogItems] = useState([])
 
   const [view, setView] = useState('list')
+  const [showBulkUpload, setShowBulkUpload] = useState(false)
   const [selectedReceipt, setSelectedReceipt] = useState(null)
   const [activeTab, setActiveTab] = useState('items')
 
@@ -310,9 +312,9 @@ export default function Receiving() {
     return true
   })
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════════════════════════════
   // NEW RECEIPT VIEW
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════════════════════════════
   if (view === 'new') {
     return (
       <div className="p-6">
@@ -328,7 +330,7 @@ export default function Receiving() {
           <div className="flex gap-3">
             <button onClick={() => { setScanTarget({ type: 'form', index: 0 }); setShowScanner(true) }}
               className="flex items-center gap-2 px-4 py-2 text-sm bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors">
-              ðŸ“· Scan SKU
+              📷 Scan SKU
             </button>
             <button onClick={() => { setView('list'); resetForm() }}
               className="px-4 py-2 text-sm text-gray-400 hover:text-white border border-gray-700 rounded-lg">
@@ -419,7 +421,7 @@ export default function Receiving() {
               <div className="flex gap-2">
                 <button onClick={() => { setScanTarget({ type: 'form', index: form.lineItems.length - 1 }); setShowScanner(true) }}
                   className="flex items-center gap-1.5 text-sm bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg">
-                  ðŸ“· Scan
+                  📷 Scan
                 </button>
                 <button onClick={addFormLineItem}
                   className="flex items-center gap-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg">
@@ -454,7 +456,7 @@ export default function Receiving() {
                     </div>
                     <button onClick={() => { setScanTarget({ type: 'form', index: i }); setShowScanner(true) }}
                       className="text-blue-400 hover:text-blue-300 p-1 flex-shrink-0" title="Scan barcode">
-                      ðŸ“·
+                      📷
                     </button>
                   </div>
                   {skuDropdown === i && filteredSkus(form.clientId).length > 0 && (
@@ -527,9 +529,9 @@ export default function Receiving() {
     )
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════════════════════════════
   // DETAIL VIEW
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════════════════════════════
   if (view === 'detail' && selectedReceipt) {
     const r = receipts.find(x => x.id === selectedReceipt.id) || selectedReceipt
     const sc = statusConfig[r.status] || statusConfig.open
@@ -584,9 +586,9 @@ export default function Receiving() {
         <div className="grid grid-cols-6 gap-3 mb-4">
           {[
             { label: 'Customer',     value: r.clientName },
-            { label: 'Reference #',  value: r.referenceId || '—' },
+            { label: 'Reference #',  value: r.referenceId || '�' },
             { label: 'Transaction',  value: r.transactionId || r.id.slice(-6).toUpperCase() },
-            { label: 'Arrival Date', value: r.arrivalDate ? new Date(r.arrivalDate).toLocaleDateString() : '—' },
+            { label: 'Arrival Date', value: r.arrivalDate ? new Date(r.arrivalDate).toLocaleDateString() : '�' },
             { label: 'Total Pallets',value: String(r.totalPallets || r.lineItems?.length || 0) },
             { label: 'Total Charges',value: `$${Number(r.totalCharges || 0).toFixed(2)}` },
           ].map(f => (
@@ -619,12 +621,12 @@ export default function Receiving() {
               <h3 className="text-white font-medium mb-4">Order Information</h3>
               <div className="grid grid-cols-3 gap-x-8 gap-y-3 text-sm">
                 {[
-                  ['Customer', r.clientName || '—'],
-                  ['Reference ID', r.referenceId || '—'],
-                  ['Purchase Order', r.poNumber || '—'],
-                  ['Arrival Date', r.arrivalDate ? new Date(r.arrivalDate).toLocaleString() : '—'],
-                  ['Expected Date', r.expectedDate ? new Date(r.expectedDate).toLocaleString() : '—'],
-                  ['Warehouse Instructions', r.warehouseInstructions || '—'],
+                  ['Customer', r.clientName || '�'],
+                  ['Reference ID', r.referenceId || '�'],
+                  ['Purchase Order', r.poNumber || '�'],
+                  ['Arrival Date', r.arrivalDate ? new Date(r.arrivalDate).toLocaleString() : '�'],
+                  ['Expected Date', r.expectedDate ? new Date(r.expectedDate).toLocaleString() : '�'],
+                  ['Warehouse Instructions', r.warehouseInstructions || '�'],
                 ].map(([label, value]) => (
                   <div key={label}><span className="text-gray-500 text-xs">{label}</span><p className="text-white">{value}</p></div>
                 ))}
@@ -634,12 +636,12 @@ export default function Receiving() {
               <h3 className="text-white font-medium mb-4">Transport Details</h3>
               <div className="grid grid-cols-3 gap-x-8 gap-y-3 text-sm">
                 {[
-                  ['Carrier', r.carrier || '—'],
-                  ['Tracking #', r.trackingNumber || '—'],
-                  ['BOL #', r.bolNumber || '—'],
-                  ['Truck #', r.truckNumber || '—'],
-                  ['Seal #', r.sealNumber || '—'],
-                  ['Driver', r.driverName || '—'],
+                  ['Carrier', r.carrier || '�'],
+                  ['Tracking #', r.trackingNumber || '�'],
+                  ['BOL #', r.bolNumber || '�'],
+                  ['Truck #', r.truckNumber || '�'],
+                  ['Seal #', r.sealNumber || '�'],
+                  ['Driver', r.driverName || '�'],
                 ].map(([label, value]) => (
                   <div key={label}><span className="text-gray-500 text-xs">{label}</span><p className="text-white">{value}</p></div>
                 ))}
@@ -664,7 +666,7 @@ export default function Receiving() {
                   <>
                     <button onClick={() => { setScanTarget({ type: 'detail' }); setShowScanner(true) }}
                       className="flex items-center gap-1 text-sm bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg">
-                      ðŸ“· Scan
+                      📷 Scan
                     </button>
                     <button onClick={() => { setShowAddItem(!showAddItem); setNewItemForm({ ...emptyLineItem }) }}
                       className="flex items-center gap-1 text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg">
@@ -748,16 +750,16 @@ export default function Receiving() {
                     ) : (
                       <>
                         <td className="px-4 py-3 text-white font-mono text-xs font-medium">{item.sku}</td>
-                        <td className="px-4 py-3 text-gray-300 text-xs max-w-xs truncate">{item.description || '—'}</td>
-                        <td className="px-4 py-3 text-white font-medium">{item.quantity || '—'}</td>
+                        <td className="px-4 py-3 text-gray-300 text-xs max-w-xs truncate">{item.description || '�'}</td>
+                        <td className="px-4 py-3 text-white font-medium">{item.quantity || '�'}</td>
                         <td className="px-4 py-3 text-gray-400 text-xs">{item.primaryUnits || 'Pallet'}</td>
                         <td className="px-4 py-3">
                           <span className={`text-xs px-2 py-0.5 rounded-full ${item.condition === 'A' ? 'bg-green-500/10 text-green-400' : item.condition === 'B' ? 'bg-yellow-500/10 text-yellow-400' : 'bg-red-500/10 text-red-400'}`}>
                             Grade {item.condition || 'A'}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-gray-300 text-xs">{item.location || '—'}</td>
-                        <td className="px-4 py-3 text-gray-400 text-xs">{item.weight ? `${item.weight} lbs` : '—'}</td>
+                        <td className="px-4 py-3 text-gray-300 text-xs">{item.location || '�'}</td>
+                        <td className="px-4 py-3 text-gray-400 text-xs">{item.weight ? `${item.weight} lbs` : '�'}</td>
                         <td className="px-4 py-3">
                           {r.status !== 'complete' && (
                             <div className="flex gap-2">
@@ -815,10 +817,10 @@ export default function Receiving() {
               {[
                 ['Receipt ID', r.id],
                 ['Status', sc.label],
-                ['Created', r.createdAt ? new Date(r.createdAt).toLocaleString() : '—'],
-                ['Completed', r.completedAt ? new Date(r.completedAt).toLocaleString() : '—'],
+                ['Created', r.createdAt ? new Date(r.createdAt).toLocaleString() : '�'],
+                ['Completed', r.completedAt ? new Date(r.completedAt).toLocaleString() : '�'],
                 ['Total Pallets', String(r.totalPallets || 0)],
-                ['Total Weight', r.totalWeight ? `${r.totalWeight} lbs` : '—'],
+                ['Total Weight', r.totalWeight ? `${r.totalWeight} lbs` : '�'],
               ].map(([label, value]) => (
                 <div key={label}>
                   <span className="text-gray-500 text-xs">{label}</span>
@@ -837,9 +839,9 @@ export default function Receiving() {
     )
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════════════════════════════
   // LIST VIEW
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════════════════════════════
   return (
     <div className="flex h-full overflow-hidden">
       <div className="w-60 bg-gray-900 border-r border-gray-800 flex flex-col flex-shrink-0 overflow-y-auto">
@@ -915,10 +917,16 @@ export default function Receiving() {
               <h2 className="text-xl font-semibold text-white">Receipts</h2>
               <p className="text-sm text-gray-500 mt-0.5">{filtered.length} results</p>
             </div>
+            <div className="flex gap-2">
+            <button onClick={() => setShowBulkUpload(true)}
+              className="flex items-center gap-2 bg-purple-600/20 hover:bg-purple-600/40 text-purple-400 border border-purple-500/20 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
+              Bulk Upload
+            </button>
             <button onClick={() => { setView('new'); setActiveTab('transport') }}
               className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
               <Plus size={16} /> New Receipt
             </button>
+            </div>
           </div>
         </div>
         <div className="flex-1 overflow-auto px-6 pb-6">
@@ -942,11 +950,11 @@ export default function Receiving() {
                     <tr key={r.id} onClick={() => { setSelectedReceipt(r); setActiveTab('items'); setView('detail') }}
                       className={`border-b border-gray-800/50 hover:bg-gray-800/40 cursor-pointer transition-colors ${i % 2 === 0 ? '' : 'bg-gray-800/10'}`}>
                       <td className="px-4 py-3 text-blue-400 font-mono text-xs font-medium">{r.transactionId || r.id.slice(-6).toUpperCase()}</td>
-                      <td className="px-4 py-3 text-white text-xs font-medium">{r.referenceId || r.poNumber || '—'}</td>
-                      <td className="px-4 py-3 text-gray-300 text-xs">{r.createdAt ? new Date(r.createdAt).toLocaleDateString() : '—'}</td>
+                      <td className="px-4 py-3 text-white text-xs font-medium">{r.referenceId || r.poNumber || '�'}</td>
+                      <td className="px-4 py-3 text-gray-300 text-xs">{r.createdAt ? new Date(r.createdAt).toLocaleDateString() : '�'}</td>
                       <td className="px-4 py-3 text-white text-sm font-medium">{r.clientName}</td>
-                      <td className="px-4 py-3 text-gray-400 text-xs max-w-xs truncate">{skuList || '—'}</td>
-                      <td className="px-4 py-3 text-gray-300 text-xs">{r.arrivalDate ? new Date(r.arrivalDate).toLocaleDateString() : '—'}</td>
+                      <td className="px-4 py-3 text-gray-400 text-xs max-w-xs truncate">{skuList || '�'}</td>
+                      <td className="px-4 py-3 text-gray-300 text-xs">{r.arrivalDate ? new Date(r.arrivalDate).toLocaleDateString() : '�'}</td>
                       <td className="px-4 py-3">
                         <span className={`text-xs px-2 py-0.5 rounded-full border flex items-center gap-1 w-fit ${sc.color}`}>
                           <StatusIcon size={10} /> {sc.label}
@@ -959,6 +967,9 @@ export default function Receiving() {
             </table>
           </div>
         </div>
+      {showBulkUpload && (
+        <BulkUpload type="receipts" onClose={() => setShowBulkUpload(false)} onSuccess={fetchData} />
+      )}
       </div>
     </div>
   )

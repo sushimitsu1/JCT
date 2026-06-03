@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { signOut } from 'firebase/auth'
 import { auth } from '../firebase'
 import { collection, getDocs } from 'firebase/firestore'
@@ -6,7 +6,7 @@ import { db } from '../firebase'
 import {
   LayoutDashboard, Package, PackagePlus, ShoppingCart,
   DollarSign, Users, BarChart3, LogOut, KeyRound, UserCog,
-  Palette, Tag, X, Plus, Menu
+  Palette, Tag, X, Plus, Menu, MapPin
 } from 'lucide-react'
 import { useAuth, ROLE_ACCESS } from '../context/AuthContext'
 import { useTheme, THEMES } from '../context/ThemeContext'
@@ -19,12 +19,14 @@ import Reports from './Reports'
 import ClientAccounts from './ClientAccounts'
 import StaffManagement from './StaffManagement'
 import Items from './Items'
+import Locations from './Locations'
 
 const allNavItems = [
   { icon: LayoutDashboard, label: 'Dashboard',      id: 'dashboard' },
   { icon: Tag,             label: 'Items / SKUs',   id: 'items'     },
   { icon: PackagePlus,     label: 'Receiving',       id: 'receiving' },
   { icon: Package,         label: 'Inventory',       id: 'inventory' },
+  { icon: MapPin,          label: 'Locations',       id: 'locations' },
   { icon: ShoppingCart,    label: 'Orders',          id: 'orders'    },
   { icon: DollarSign,      label: 'Billing',         id: 'billing'   },
   { icon: Users,           label: 'Clients',         id: 'clients'   },
@@ -136,6 +138,7 @@ export default function Dashboard() {
       case 'billing':   return <Billing />
       case 'clients':   return <Clients />
       case 'accounts':  return <ClientAccounts />
+      case 'locations': return <Locations />
       case 'staff':     return <StaffManagement />
       case 'reports':   return <Reports />
       default:          return null
