@@ -3,12 +3,13 @@ import { collection, getDocs, addDoc, updateDoc, doc, query, orderBy } from 'fir
 import { signOut } from 'firebase/auth'
 import { auth, db } from '../firebase'
 import { useAuth } from '../context/AuthContext'
+import MobileWaves from './MobileWaves'
 import {
   Package, PackagePlus, ShoppingCart, MoreHorizontal,
   Search, X, ChevronDown, ChevronRight, Plus, Check,
   LogOut, Users, DollarSign, BarChart3, RefreshCw,
   MapPin, Filter, AlertCircle, CheckCircle, Clock,
-  Layers, ArrowLeft, Tag
+  Layers, ArrowLeft, Tag, Waves
 } from 'lucide-react'
 
 const statusColors = {
@@ -33,22 +34,25 @@ export default function MobileApp() {
   const [orders, setOrders] = useState([])
   const [clients, setClients] = useState([])
   const [catalogItems, setCatalogItems] = useState([])
+  const [waves, setWaves] = useState([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
   const fetchAll = async (silent = false) => {
     if (!silent) setLoading(true)
     else setRefreshing(true)
-    const [invSnap, ordersSnap, clientsSnap, catalogSnap] = await Promise.all([
+    const [invSnap, ordersSnap, clientsSnap, catalogSnap, wavesSnap] = await Promise.all([
       getDocs(collection(db, 'inventory')),
       getDocs(query(collection(db, 'orders'), orderBy('createdAt', 'desc'))),
       getDocs(collection(db, 'clients')),
-      getDocs(collection(db, 'items'))
+      getDocs(collection(db, 'items')),
+      getDocs(query(collection(db, 'waves'), orderBy('createdAt', 'desc'))).catch(() => ({ docs: [] }))
     ])
     setInventory(invSnap.docs.map(d => ({ id: d.id, ...d.data() })))
     setOrders(ordersSnap.docs.map(d => ({ id: d.id, ...d.data() })))
     setClients(clientsSnap.docs.map(d => ({ id: d.id, ...d.data() })))
     setCatalogItems(catalogSnap.docs.map(d => ({ id: d.id, ...d.data() })))
+    setWaves((wavesSnap.docs || []).map(d => ({ id: d.id, ...d.data() })))
     if (!silent) setLoading(false)
     else setRefreshing(false)
   }
@@ -94,6 +98,16 @@ export default function MobileApp() {
             onStatusChange={() => fetchAll(true)}
           />
         )}
+        {activeNav === 'waves' && (
+          <MobileWaves
+            waves={waves}
+            orders={orders}
+            inventory={inventory}
+            clients={clients}
+            onRefresh={() => fetchAll(true)}
+            refreshing={refreshing}
+          />
+        )}
         {activeNav === 'more' && (
           <MoreScreen onSignOut={() => signOut(auth)} userName={userName} />
         )}
@@ -107,6 +121,7 @@ export default function MobileApp() {
             { id: 'inventory', icon: Package,       label: 'Inventory' },
             { id: 'receiving', icon: PackagePlus,   label: 'Receive'   },
             { id: 'orders',    icon: ShoppingCart,  label: 'Orders'    },
+            { id: 'waves',     icon: Waves,         label: 'Waves'     },
             { id: 'more',      icon: MoreHorizontal,label: 'More'      },
           ].map(item => (
             <button

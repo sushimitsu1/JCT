@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { collection, addDoc, getDocs, doc, updateDoc, deleteDoc, query, orderBy } from 'firebase/firestore'
 import { useAuth } from '../context/AuthContext'
+import WaveManagement from './WaveManagement'
 import { db } from '../firebase'
 import {
   Plus, X, ShoppingCart, CheckCircle, Clock, XCircle,
@@ -45,6 +46,7 @@ export default function Orders() {
   const [catalogItems, setCatalogItems] = useState([])
 
   const [openTabs, setOpenTabs] = useState([])
+  const [viewMode, setViewMode] = useState('orders')
   const [activeTabId, setActiveTabId] = useState(null)
 
   const [view, setView] = useState('list')
@@ -1103,8 +1105,35 @@ const revertOrder = async (order) => {
   // ═══════════════════════════════════════════════════════════════════
   // LIST VIEW
   // ═══════════════════════════════════════════════════════════════════
+  if (viewMode === 'waves') {
+    return (
+      <div className="p-6">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <h2 className="text-xl font-semibold text-white">Orders</h2>
+          <div className="flex gap-1 border-b border-gray-800">
+            {[{id:'orders',label:'Orders'},{id:'waves',label:'Waves'}].map(t => (
+              <button key={t.id} onClick={() => setViewMode(t.id)}
+                className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                  viewMode === t.id ? 'border-red-500 text-white' : 'border-transparent text-gray-400 hover:text-white'
+                }`}>{t.label}</button>
+            ))}
+          </div>
+        </div>
+        <WaveManagement />
+      </div>
+    )
+  }
+
   return (
     <div className="p-6">
+      <div className="flex gap-1 border-b border-gray-800 mb-4">
+        {[{id:'orders',label:'Orders'},{id:'waves',label:'Waves'}].map(t => (
+          <button key={t.id} onClick={() => setViewMode(t.id)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              viewMode === t.id ? 'border-red-500 text-white' : 'border-transparent text-gray-400 hover:text-white'
+            }`}>{t.label}</button>
+        ))}
+      </div>
       {openTabs.length > 0 && (
         <div className="flex items-center gap-1 mb-4 border-b border-gray-800 pb-0">
           <span className="text-xs text-gray-500 px-2">Open:</span>
