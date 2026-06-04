@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import BarcodeScanner from '../components/BarcodeScanner'
+import PalletManagement from './PalletManagement'
 
 const conditionColors = {
   A: 'bg-green-500/10 text-green-400 border-green-500/20',
@@ -29,6 +30,7 @@ const ADJUSTMENT_REASONS = [
 ]
 const TABS = [
   { id: 'inventory',    label: 'Inventory',      icon: Package },
+  { id: 'pallets', label: 'Pallets', icon: Package },
   { id: 'adjustments', label: 'Adjustments Log', icon: ClipboardList },
   { id: 'cycle',        label: 'Cycle Count',     icon: ClipboardList },
 ]
@@ -607,6 +609,8 @@ export default function Inventory() {
           )}
 
           {/* ── ADJUSTMENTS TAB ── */}
+          {activeTab === 'pallets' && <PalletManagement />}
+
           {activeTab === 'adjustments' && (
             <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
               <table className="w-full text-sm">

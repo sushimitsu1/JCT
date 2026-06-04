@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import {
@@ -15,6 +15,7 @@ const emptyForm = {
   type: 'floor',
   notes: '',
   active: true,
+  capacity: '',
 }
 
 const inputCls = 'w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500'
@@ -79,6 +80,7 @@ export default function Locations() {
         aisle: form.aisle.toUpperCase(),
         bay: String(form.bay),
         level: form.level || null,
+        capacity: form.capacity === '' || form.capacity == null ? null : Number(form.capacity),
       }
       if (editId) {
         await updateDoc(doc(db, 'locations', editId), data)
@@ -108,7 +110,7 @@ export default function Locations() {
     fetchData()
   }
 
-  // Bulk generator — creates a range of locations at once
+  // Bulk generator � creates a range of locations at once
   const handleGenerate = async () => {
     const start = parseInt(gen.bayStart, 10)
     const end = parseInt(gen.bayEnd, 10)
@@ -201,7 +203,7 @@ export default function Locations() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-xl font-semibold text-white">Warehouse Locations</h2>
-          <p className="text-sm text-gray-500 mt-0.5">{stats.total} total · {stats.active} active · {stats.occupied} occupied</p>
+          <p className="text-sm text-gray-500 mt-0.5">{stats.total} total � {stats.active} active � {stats.occupied} occupied</p>
         </div>
         <div className="flex gap-2">
           <button onClick={() => setShowBulkUpload(true)}
@@ -281,7 +283,7 @@ export default function Locations() {
         <span className="text-xs text-gray-600 ml-2">{filtered.length} shown</span>
       </div>
 
-      {/* ─── COMPACT VIEW (default table, dense rows) ─── */}
+      {/* --- COMPACT VIEW (default table, dense rows) --- */}
       {viewMode === 'compact' && (
         <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
           <table className="w-full text-xs">
@@ -298,7 +300,7 @@ export default function Locations() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr><td colSpan={6} className="text-center text-gray-500 py-12">
-                  {locations.length === 0 ? 'No locations yet — use Quick Generator to create A-01 through A-48 in one click' : 'No locations match the current filters'}
+                  {locations.length === 0 ? 'No locations yet � use Quick Generator to create A-01 through A-48 in one click' : 'No locations match the current filters'}
                 </td></tr>
               ) : filtered.map((loc, i) => {
                 const count = occupancyByLabel[loc.label] || 0
@@ -313,7 +315,7 @@ export default function Locations() {
                     <td className="px-3 py-1.5">
                       {count > 0 ? <span className="text-yellow-400">{count} plt</span> : <span className="text-gray-600">empty</span>}
                     </td>
-                    <td className="px-3 py-1.5 text-gray-500 max-w-xs truncate">{loc.notes || '—'}</td>
+                    <td className="px-3 py-1.5 text-gray-500 max-w-xs truncate">{loc.notes || '�'}</td>
                     <td className="px-3 py-1.5">
                       <span className={`px-1.5 py-0.5 rounded text-[10px] ${
                         loc.active ? 'bg-green-500/10 text-green-400' : 'bg-gray-500/10 text-gray-400'
@@ -340,7 +342,7 @@ export default function Locations() {
         </div>
       )}
 
-      {/* ─── GROUPED VIEW (collapsible by aisle) ─── */}
+      {/* --- GROUPED VIEW (collapsible by aisle) --- */}
       {viewMode === 'grouped' && (
         <div className="space-y-2">
           {sortedAisles.length === 0 ? (
@@ -359,7 +361,7 @@ export default function Locations() {
                     <ChevronDown size={14} className={`text-gray-400 transition-transform ${isCollapsed ? '-rotate-90' : ''}`}/>
                     <span className="text-white font-semibold text-sm">Aisle {aisle}</span>
                     <span className="text-xs text-gray-500">{aisleLocs.length} location{aisleLocs.length !== 1 ? 's' : ''}</span>
-                    {occ > 0 && <span className="text-xs text-yellow-400">· {occ} occupied</span>}
+                    {occ > 0 && <span className="text-xs text-yellow-400">� {occ} occupied</span>}
                   </div>
                 </button>
                 {!isCollapsed && (
@@ -388,7 +390,7 @@ export default function Locations() {
         </div>
       )}
 
-      {/* ─── GRID MAP VIEW ─── */}
+      {/* --- GRID MAP VIEW --- */}
       {viewMode === 'grid' && (
         <div className="space-y-3">
           {sortedAisles.length === 0 ? (
@@ -405,7 +407,7 @@ export default function Locations() {
                     const count = occupancyByLabel[loc.label] || 0
                     return (
                       <button key={loc.id} onClick={() => handleEdit(loc)}
-                        title={`${loc.label} — ${count > 0 ? count + ' pallet(s)' : 'empty'}${loc.notes ? ' — ' + loc.notes : ''}`}
+                        title={`${loc.label} � ${count > 0 ? count + ' pallet(s)' : 'empty'}${loc.notes ? ' � ' + loc.notes : ''}`}
                         className={`w-14 h-12 rounded text-[10px] flex flex-col items-center justify-center border transition-all hover:scale-110 ${
                           !loc.active ? 'border-gray-800 bg-gray-800/30 opacity-30' :
                           count > 0 ? 'border-yellow-500/40 bg-yellow-500/10 text-yellow-400' :
@@ -424,7 +426,7 @@ export default function Locations() {
         </div>
       )}
 
-      {/* ─── ADD / EDIT MODAL ─── */}
+      {/* --- ADD / EDIT MODAL --- */}
       {showModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-lg">
@@ -457,7 +459,7 @@ export default function Locations() {
               <div>
                 <label className={labelCls}>Generated Label</label>
                 <div className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-blue-400 font-mono">
-                  {buildLabel(form.aisle, form.bay, form.level) || '—'}
+                  {buildLabel(form.aisle, form.bay, form.level) || '�'}
                 </div>
               </div>
               <div>
@@ -466,6 +468,10 @@ export default function Locations() {
                   <option value="floor">Floor bay</option>
                   <option value="rack">Rack position</option>
                 </select>
+              </div>
+              <div>
+                <label className={labelCls}>Capacity (pallets)</label>
+                <input type="number" min="0" value={form.capacity} onChange={e => set('capacity', e.target.value)} className={inputCls} placeholder="e.g. 4"/>
               </div>
               <div>
                 <label className={labelCls}>Notes</label>
@@ -491,7 +497,7 @@ export default function Locations() {
         </div>
       )}
 
-      {/* ─── QUICK GENERATOR MODAL ─── */}
+      {/* --- QUICK GENERATOR MODAL --- */}
       {showGenerator && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
           <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-lg">
@@ -505,7 +511,7 @@ export default function Locations() {
             </div>
             <div className="px-6 py-4 space-y-4">
               <p className="text-gray-400 text-xs">
-                Generate a range of locations in one click. Example: Aisle A, bays 01–48 (floor) creates A-01 through A-48.
+                Generate a range of locations in one click. Example: Aisle A, bays 01�48 (floor) creates A-01 through A-48.
               </p>
               <div>
                 <label className={labelCls}>Type</label>

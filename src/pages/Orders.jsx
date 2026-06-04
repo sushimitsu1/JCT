@@ -1,5 +1,6 @@
-﻿import { useState, useEffect } from 'react'
-import { collection, addDoc, getDocs, doc, updateDoc, query, orderBy } from 'firebase/firestore'
+import { useState, useEffect } from 'react'
+import { collection, addDoc, getDocs, doc, updateDoc, deleteDoc, query, orderBy } from 'firebase/firestore'
+import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase'
 import {
   Plus, X, ShoppingCart, CheckCircle, Clock, XCircle,
@@ -72,19 +73,25 @@ export default function Orders() {
 
   const [showScanner, setShowScanner] = useState(false)
   const [scannedPallets, setScannedPallets] = useState([])
+  const [pickers, setPickers] = useState([])
+  const [newPickerName, setNewPickerName] = useState('')
+  const [addingPicker, setAddingPicker] = useState(false)
+  const { user, userName } = useAuth()
 
   const fetchData = async () => {
-    const [ordersSnap, clientsSnap, invSnap, catalogSnap] = await Promise.all([
+    const [ordersSnap, clientsSnap, invSnap, catalogSnap, pickersSnap] = await Promise.all([
       getDocs(query(collection(db, 'orders'), orderBy('createdAt', 'desc'))),
       getDocs(collection(db, 'clients')),
       getDocs(collection(db, 'inventory')),
-      getDocs(collection(db, 'items'))
+      getDocs(collection(db, 'items')),
+      getDocs(collection(db, 'pickers'))
     ])
     const newOrders = ordersSnap.docs.map(d => ({ id: d.id, ...d.data() }))
     setOrders(newOrders)
     setClients(clientsSnap.docs.map(d => ({ id: d.id, ...d.data() })))
     setInventory(invSnap.docs.map(d => ({ id: d.id, ...d.data() })))
     setCatalogItems(catalogSnap.docs.map(d => ({ id: d.id, ...d.data() })))
+    setPickers(pickersSnap.docs.map(d => ({ id: d.id, ...d.data() })))
     if (selectedOrder) {
       const refreshed = newOrders.find(o => o.id === selectedOrder.id)
       if (refreshed) setSelectedOrder(refreshed)
@@ -292,7 +299,15 @@ export default function Orders() {
       const client = clients.find(c => c.id === order.clientId)
       if (client?.email) await sendShipmentEmail(order, client.email)
     }
-    await updateDoc(doc(db, 'orders', order.id), { status: newStatus })
+    const statusFields = { status: newStatus }
+    if (newStatus === 'picking') { statusFields.pickingStartedAt = new Date().toISOString() }
+    if (newStatus === 'shipped') {
+      statusFields.shippedAt = new Date().toISOString()
+      statusFields.shippedBy = user?.uid || null
+      statusFields.shippedByName = userName || null
+      if (!order.pickedAt) statusFields.pickedAt = new Date().toISOString()
+    }
+    await updateDoc(doc(db, 'orders', order.id), statusFields)
     fetchData()
     setSuccessMsg(`Order status updated to ${newStatus}`)
     setTimeout(() => setSuccessMsg(''), 3000)
@@ -321,7 +336,7 @@ const revertOrder = async (order) => {
       await applyAllocation(newAlloc, order.id)
       await updateDoc(doc(db, 'orders', order.id), { status: 'pending', inventoryAllocations: newAlloc, revertedAt: new Date().toISOString() })
       fetchData()
-      setSuccessMsg('Order reverted to Pending â€” inventory restored')
+      setSuccessMsg('Order reverted to Pending — inventory restored')
       setTimeout(() => setSuccessMsg(''), 3000)
     } catch (err) { console.error(err) }
     setLoading(false)
@@ -337,7 +352,7 @@ const revertOrder = async (order) => {
       const skuAllocs = allocationSnapshot.filter(a => a.sku === orderItem.sku)
       const palletAllocs = skuAllocs.map(a => {
         const invItem = inventory.find(i => i.id === a.inventoryId)
-        return { palletId: a.palletId || a.inventoryId, location: invItem?.location || 'â€”', units: a.unitsAllocated, cartons: piecesPerCarton > 0 ? Math.ceil(a.unitsAllocated / piecesPerCarton) : 0, piecesPerCarton, receivedDate: invItem?.receivedDate, selected: true, scanned: false, inventoryId: a.inventoryId }
+        return { palletId: a.palletId || a.inventoryId, location: invItem?.location || '—', units: a.unitsAllocated, cartons: piecesPerCarton > 0 ? Math.ceil(a.unitsAllocated / piecesPerCarton) : 0, piecesPerCarton, receivedDate: invItem?.receivedDate, selected: true, scanned: false, inventoryId: a.inventoryId }
       })
       return { sku: orderItem.sku, description: orderItem.description, qtyOrdered: totalPiecesNeeded, totalCartons: piecesPerCarton > 0 ? Math.ceil(totalPiecesNeeded / piecesPerCarton) : 0, piecesPerCarton, pallets: palletAllocs, shortfall: Math.max(0, totalPiecesNeeded - palletAllocs.reduce((s, p) => s + p.units, 0)), order }
     })
@@ -380,7 +395,7 @@ const revertOrder = async (order) => {
       pdf.setFontSize(9); pdf.setTextColor(27, 42, 74); pdf.setFont('helvetica', 'normal')
       pdf.text('Warehouse: JCT LOGISTICS INC.', 14, 35)
       pdf.setTextColor(200, 16, 46); pdf.setFontSize(13); pdf.setFont('helvetica', 'bold')
-      pdf.text(`Transaction # : ${order?.orderNumber || order?.id?.slice(-6) || 'â€”'}`, pw - 14, 28, { align: 'right' })
+      pdf.text(`Transaction # : ${order?.orderNumber || order?.id?.slice(-6) || '—'}`, pw - 14, 28, { align: 'right' })
       const st = order?.shipTo
       pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8); pdf.setTextColor(27, 42, 74)
       pdf.text('Ship To', 14, 43); pdf.setFont('helvetica', 'bold'); pdf.setFontSize(9)
@@ -391,10 +406,10 @@ const revertOrder = async (order) => {
       pdf.text('Reference # :', pw - 80, 43); pdf.text('Entered Date :', pw - 80, 50)
       pdf.text('Carrier :', pw - 80, 57); pdf.text('Tracking # :', pw - 80, 64)
       pdf.setTextColor(27, 42, 74); pdf.setFont('helvetica', 'bold')
-      pdf.text(order?.orderNumber || 'â€”', pw - 14, 43, { align: 'right' })
-      pdf.text(order?.orderDate || 'â€”', pw - 14, 50, { align: 'right' })
-      pdf.text(order?.carrier?.carrier || 'â€”', pw - 14, 57, { align: 'right' })
-      pdf.text(order?.carrier?.trackingNumber || 'â€”', pw - 14, 64, { align: 'right' })
+      pdf.text(order?.orderNumber || '—', pw - 14, 43, { align: 'right' })
+      pdf.text(order?.orderDate || '—', pw - 14, 50, { align: 'right' })
+      pdf.text(order?.carrier?.carrier || '—', pw - 14, 57, { align: 'right' })
+      pdf.text(order?.carrier?.trackingNumber || '—', pw - 14, 64, { align: 'right' })
       pdf.setDrawColor(200, 16, 46); pdf.setLineWidth(0.5); pdf.line(14, 70, pw - 14, 70); y = 78
     }
     drawHeader()
@@ -421,10 +436,10 @@ const revertOrder = async (order) => {
         pdf.rect(14, y, pw - 28, 8, 'F'); pdf.setDrawColor(235, 235, 235); pdf.rect(14, y, pw - 28, 8)
         pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7); pdf.setTextColor(80, 80, 80)
         pdf.text('  Details:', 16, y + 5)
-        if (pallet.location !== 'â€”') pdf.text(`Loc: ${pallet.location}`, 38, y + 5)
+        if (pallet.location !== '—') pdf.text(`Loc: ${pallet.location}`, 38, y + 5)
         pdf.text(`Pallet: ${pallet.palletId}`, 75, y + 5); pdf.text(`Qty (Each): ${pallet.units}`, 115, y + 5)
         pdf.text(`Cartons: ${pallet.cartons}`, 155, y + 5)
-        if (pallet.scanned) { pdf.setTextColor(22, 163, 74); pdf.text('âœ“ Scanned', pw - 16, y + 5, { align: 'right' }) }
+        if (pallet.scanned) { pdf.setTextColor(22, 163, 74); pdf.text('✓ Scanned', pw - 16, y + 5, { align: 'right' }) }
         y += 8
       })
     })
@@ -475,9 +490,9 @@ const revertOrder = async (order) => {
   const inputCls = "w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500"
   const labelCls = "text-gray-400 text-xs mb-1 block"
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════════════════════════════
   // FORM VIEW
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════════════════════════════
   if (view === 'new' || view === 'edit') {
     const skuList = availableSkusFor(form.clientId)
     return (
@@ -581,7 +596,7 @@ const revertOrder = async (order) => {
                   const liveAvail = item.sku ? (availableSkusFor(form.clientId, i).find(s => s.sku === item.sku)?.totalUnits || 0) : 0
                   const catalog = catalogItems.find(c => c.clientId === form.clientId && c.sku === item.sku)
                   const ppc = Number(catalog?.piecesPerCarton || 0)
-                  const cartons = ppc > 0 && item.pieces ? Math.ceil(Number(item.pieces) / ppc) : 'â€”'
+                  const cartons = ppc > 0 && item.pieces ? Math.ceil(Number(item.pieces) / ppc) : '—'
                   const over = item.availableUnits > 0 && Number(item.pieces) > item.availableUnits
                   return (
                     <div key={i} className="grid grid-cols-12 gap-3 items-center mb-2">
@@ -618,7 +633,7 @@ const revertOrder = async (order) => {
                       </div>
                       <div className="col-span-1 flex items-center justify-between">
                         <span className={`text-xs font-medium ${item.availableUnits > 0 ? 'text-green-400' : item.sku ? 'text-red-400' : 'text-gray-600'}`}>
-                          {item.availableUnits || (item.sku ? '0' : 'â€”')}
+                          {item.availableUnits || (item.sku ? '0' : '—')}
                         </span>
                         <button onClick={() => removeItem(i)} className="text-gray-600 hover:text-red-400 ml-2"><X size={14} /></button>
                       </div>
@@ -626,7 +641,7 @@ const revertOrder = async (order) => {
                   )
                 })}
                 {form.items.some(item => item.availableUnits > 0 && Number(item.pieces) > item.availableUnits) && (
-                  <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs rounded-lg px-3 py-2 mt-2">âš ï¸ One or more items exceed available inventory</div>
+                  <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-xs rounded-lg px-3 py-2 mt-2">⚠️ One or more items exceed available inventory</div>
                 )}
                 <div className="border-t border-gray-800 mt-4 pt-3 flex justify-end gap-8 text-sm">
                   <span className="text-gray-400">Total Pieces: <span className="text-white font-medium">{form.items.reduce((s, i) => s + Number(i.pieces || 0), 0)}</span></span>
@@ -684,9 +699,9 @@ const revertOrder = async (order) => {
     )
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════════════════════════════
   // DETAIL VIEW
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════════════════════════════
   if (view === 'detail' && selectedOrder) {
     const order = orders.find(o => o.id === selectedOrder.id) || selectedOrder
     const status = statusConfig[order.status] || statusConfig.pending
@@ -704,7 +719,7 @@ const revertOrder = async (order) => {
               <div key={tab.id} onClick={() => switchTab(tab)}
                 className={`flex items-center gap-2 px-3 py-2 text-xs cursor-pointer border-b-2 transition-colors ${activeTabId === tab.id ? 'border-blue-500 text-blue-400 bg-blue-500/5' : 'border-transparent text-gray-400 hover:text-white hover:border-gray-600'}`}>
                 <Pencil size={10} />
-                <span className="max-w-32 truncate">{tab.orderNumber} â€” {tab.clientName}</span>
+                <span className="max-w-32 truncate">{tab.orderNumber} — {tab.clientName}</span>
                 <button onClick={e => closeTab(e, tab.id)} className="text-gray-600 hover:text-red-400 ml-1"><X size={11} /></button>
               </div>
             ))}
@@ -763,6 +778,71 @@ const revertOrder = async (order) => {
           </div>
         </div>
 
+        {order.status !== 'cancelled' && (
+          <div className="flex items-center gap-3 mb-3 bg-gray-900/40 border border-gray-800 rounded-lg px-3 py-2 flex-wrap">
+            <span className="text-xs text-gray-400">Picker:</span>
+            <select
+              value={order.pickedBy || ''}
+              disabled={order.status === 'shipped'}
+              onChange={async (e) => {
+                const picker = pickers.find(p => p.id === e.target.value)
+                await updateDoc(doc(db, 'orders', order.id), {
+                  pickedBy: e.target.value || null,
+                  pickedByName: picker?.name || null,
+                })
+                fetchData()
+              }}
+              className="bg-gray-800 border border-gray-700 rounded-lg text-white text-sm px-2 py-1 flex-1 max-w-xs disabled:opacity-60"
+            >
+              <option value="">-- Unassigned --</option>
+              {pickers.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            {order.pickedBy && order.status !== 'shipped' && (
+              <button
+                onClick={async () => {
+                  const picker = pickers.find(p => p.id === order.pickedBy)
+                  if (!picker) return
+                  if (!confirm(`Delete picker "${picker.name}"? This removes them from the dropdown for all future orders. Past orders keep their picker history.`)) return
+                  await deleteDoc(doc(db, 'pickers', picker.id))
+                  await updateDoc(doc(db, 'orders', order.id), { pickedBy: null, pickedByName: null })
+                  fetchData()
+                }}
+                title="Delete this picker from the system"
+                className="text-xs bg-red-600/20 hover:bg-red-600/40 text-red-400 border border-red-500/20 px-2 py-1 rounded"
+              >
+                Delete picker
+              </button>
+            )}
+            {order.status !== 'shipped' && (
+              !addingPicker ? (
+                <button onClick={() => setAddingPicker(true)} className="text-xs bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 border border-blue-600/20 px-2 py-1 rounded">+ Add picker</button>
+              ) : (
+                <div className="flex items-center gap-1">
+                  <input type="text" autoFocus value={newPickerName} onChange={(e) => setNewPickerName(e.target.value)} placeholder="Picker name" className="bg-gray-800 border border-gray-700 rounded-lg text-white text-sm px-2 py-1 w-32" onKeyDown={async (e) => { if (e.key === 'Escape') { setNewPickerName(''); setAddingPicker(false) } }} />
+                  <button onClick={async () => {
+                    const name = newPickerName.trim()
+                    if (!name) return
+                    const ref = await addDoc(collection(db, 'pickers'), { name, createdAt: new Date().toISOString() })
+                    await updateDoc(doc(db, 'orders', order.id), { pickedBy: ref.id, pickedByName: name })
+                    setNewPickerName(''); setAddingPicker(false); fetchData()
+                  }} className="text-xs bg-green-600 hover:bg-green-500 text-white px-2 py-1 rounded">Save</button>
+                  <button onClick={() => { setNewPickerName(''); setAddingPicker(false) }} className="text-xs text-gray-400 hover:text-white px-2 py-1">Cancel</button>
+                </div>
+              )
+            )}
+            {order.pickedByName && order.status === 'shipped' && (
+              <span className="text-xs text-gray-500">Picked by: {order.pickedByName}</span>
+            )}
+            {order.pickedAt && (
+              <span className="text-xs text-gray-500">Picked: {new Date(order.pickedAt).toLocaleString()}</span>
+            )}
+            {order.shippedByName && (
+              <span className="text-xs text-gray-500">Shipped by: {order.shippedByName}</span>
+            )}
+          </div>
+        )}
         {successMsg && (
           <div className="bg-green-500/10 border border-green-500/20 text-green-400 text-sm rounded-lg px-4 py-3 mb-4 flex items-center gap-2">
             <CheckCircle size={16} /> {successMsg}
@@ -772,10 +852,10 @@ const revertOrder = async (order) => {
         <div className="grid grid-cols-6 gap-3 mb-4">
           {[
             { label: 'Client',        value: order.clientName },
-            { label: 'Reference #',   value: order.orderNumber || 'â€”' },
+            { label: 'Reference #',   value: order.orderNumber || '—' },
             { label: 'Order Date',    value: order.orderDate },
-            { label: 'Ship Date',     value: order.earliestShipDate || 'â€”' },
-            { label: 'Cancel Date',   value: order.cancelDate || 'â€”' },
+            { label: 'Ship Date',     value: order.earliestShipDate || '—' },
+            { label: 'Cancel Date',   value: order.cancelDate || '—' },
             { label: 'Total Charges', value: `$${Number(order.totalCharges || 0).toFixed(2)}` },
           ].map(f => (
             <div key={f.label} className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3">
@@ -805,16 +885,16 @@ const revertOrder = async (order) => {
             {order.shipTo?.company ? (
               <div className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
                 {[
-                  ['Company', order.shipTo?.company], ['Recipient', order.shipTo?.recipient || 'â€”'],
-                  ['Address 1', order.shipTo?.address1 || 'â€”'], ['Address 2', order.shipTo?.address2 || 'â€”'],
-                  ['City', order.shipTo?.city || 'â€”'], ['State / ZIP', `${order.shipTo?.state || ''} ${order.shipTo?.zip || ''}`.trim() || 'â€”'],
-                  ['Phone', order.shipTo?.phone || 'â€”'], ['Email', order.shipTo?.email || 'â€”'],
+                  ['Company', order.shipTo?.company], ['Recipient', order.shipTo?.recipient || '—'],
+                  ['Address 1', order.shipTo?.address1 || '—'], ['Address 2', order.shipTo?.address2 || '—'],
+                  ['City', order.shipTo?.city || '—'], ['State / ZIP', `${order.shipTo?.state || ''} ${order.shipTo?.zip || ''}`.trim() || '—'],
+                  ['Phone', order.shipTo?.phone || '—'], ['Email', order.shipTo?.email || '—'],
                 ].map(([label, value]) => (
                   <div key={label}><span className="text-gray-500 text-xs">{label}</span><p className="text-white">{value}</p></div>
                 ))}
               </div>
             ) : (
-              <p className="text-gray-500 text-sm">No shipping destination â€” edit order to add</p>
+              <p className="text-gray-500 text-sm">No shipping destination — edit order to add</p>
             )}
             {order.notes && <div className="mt-4 pt-4 border-t border-gray-800"><span className="text-gray-500 text-xs">Notes</span><p className="text-white text-sm mt-1">{order.notes}</p></div>}
           </div>
@@ -834,7 +914,7 @@ const revertOrder = async (order) => {
                 {(order.items || []).map((item, i) => {
                   const cat = catalogItems.find(c => c.clientId === order.clientId && c.sku === item.sku)
                   const ppc = Number(cat?.piecesPerCarton || 1)
-                  const cartons = ppc > 0 ? Math.ceil(Number(item.pieces || item.quantity || 0) / ppc) : 'â€”'
+                  const cartons = ppc > 0 ? Math.ceil(Number(item.pieces || item.quantity || 0) / ppc) : '—'
                   const avail = availableSkusFor(order.clientId).find(s => s.sku === item.sku)
                   return (
                     <tr key={i} className={`border-b border-gray-800/50 ${i % 2 === 0 ? '' : 'bg-gray-800/10'}`}>
@@ -866,7 +946,7 @@ const revertOrder = async (order) => {
                     onKeyDown={async e => { if (e.key === 'Enter' && e.target.value) { await updateDoc(doc(db, 'orders', order.id), { 'carrier.trackingNumber': e.target.value }); fetchData() } }} />
                 </div>
                 <div className="px-4 py-3 bg-yellow-500/5 border-t border-yellow-500/20 text-yellow-400 text-xs">
-                  âš ï¸ Clicking "Ship & Close Order" will deduct allocated quantities from inventory using FIFO
+                  ⚠️ Clicking "Ship & Close Order" will deduct allocated quantities from inventory using FIFO
                 </div>
               </>
             )}
@@ -878,7 +958,7 @@ const revertOrder = async (order) => {
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
               <h3 className="text-white font-medium mb-4">Carrier Information</h3>
               <div className="grid grid-cols-3 gap-x-8 gap-y-3 text-sm">
-                {[['Carrier', order.carrier?.carrier || 'â€”'], ['SCAC', order.carrier?.scac || 'â€”'], ['Service', order.carrier?.service || 'â€”'], ['Billing', order.carrier?.billingType || 'â€”'], ['Account #', order.carrier?.accountNumber || 'â€”'], ['Tracking #', order.carrier?.trackingNumber || 'â€”']].map(([label, value]) => (
+                {[['Carrier', order.carrier?.carrier || '—'], ['SCAC', order.carrier?.scac || '—'], ['Service', order.carrier?.service || '—'], ['Billing', order.carrier?.billingType || '—'], ['Account #', order.carrier?.accountNumber || '—'], ['Tracking #', order.carrier?.trackingNumber || '—']].map(([label, value]) => (
                   <div key={label}><span className="text-gray-500 text-xs">{label}</span><p className="text-white">{value}</p></div>
                 ))}
               </div>
@@ -886,7 +966,7 @@ const revertOrder = async (order) => {
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
               <h3 className="text-white font-medium mb-4">Routing</h3>
               <div className="grid grid-cols-3 gap-x-8 gap-y-3 text-sm">
-                {[['Load #', order.carrier?.loadNumber || 'â€”'], ['BOL #', order.carrier?.bolNumber || 'â€”'], ['Trailer #', order.carrier?.trailerNumber || 'â€”'], ['Seal #', order.carrier?.sealNumber || 'â€”'], ['Door', order.carrier?.door || 'â€”'], ['Pickup Date', order.carrier?.pickupDate || 'â€”']].map(([label, value]) => (
+                {[['Load #', order.carrier?.loadNumber || '—'], ['BOL #', order.carrier?.bolNumber || '—'], ['Trailer #', order.carrier?.trailerNumber || '—'], ['Seal #', order.carrier?.sealNumber || '—'], ['Door', order.carrier?.door || '—'], ['Pickup Date', order.carrier?.pickupDate || '—']].map(([label, value]) => (
                   <div key={label}><span className="text-gray-500 text-xs">{label}</span><p className="text-white">{value}</p></div>
                 ))}
                 {order.carrier?.warehouseInstructions && <div className="col-span-3"><span className="text-gray-500 text-xs">Warehouse Instructions</span><p className="text-white mt-1">{order.carrier.warehouseInstructions}</p></div>}
@@ -921,14 +1001,14 @@ const revertOrder = async (order) => {
                 <div>
                   <h3 className="text-white font-semibold">Pick Ticket</h3>
                   <p className="text-gray-500 text-xs mt-0.5">
-                    FIFO allocated Â· {allocations.reduce((s, a) => s + a.pallets.filter(p => p.selected).length, 0)} pallets
-                    {scannedPallets.length > 0 && <span className="text-green-400 ml-2">Â· {scannedPallets.length} scanned</span>}
+                    FIFO allocated · {allocations.reduce((s, a) => s + a.pallets.filter(p => p.selected).length, 0)} pallets
+                    {scannedPallets.length > 0 && <span className="text-green-400 ml-2">· {scannedPallets.length} scanned</span>}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
                   <button onClick={() => setShowScanner(true)}
                     className="flex items-center gap-1.5 text-sm bg-purple-600/20 hover:bg-purple-600/40 text-purple-400 border border-purple-600/20 px-3 py-1.5 rounded-lg transition-colors">
-                    ðŸ“· Scan Pallet
+                    📷 Scan Pallet
                   </button>
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input type="checkbox" checked={manualMode} onChange={e => setManualMode(e.target.checked)} className="w-3.5 h-3.5 accent-purple-500" />
@@ -980,10 +1060,10 @@ const revertOrder = async (order) => {
                                 </td>
                               )}
                               <td className="px-4 py-2 text-blue-400 font-mono">
-                                <div className="flex items-center gap-2">{pallet.palletId}{pallet.scanned && <span className="text-green-400 text-xs font-normal">âœ“ Scanned</span>}</div>
+                                <div className="flex items-center gap-2">{pallet.palletId}{pallet.scanned && <span className="text-green-400 text-xs font-normal">✓ Scanned</span>}</div>
                               </td>
                               <td className="px-4 py-2 text-white font-medium">{pallet.location}</td>
-                              <td className="px-4 py-2 text-gray-400">{pallet.receivedDate || 'â€”'}</td>
+                              <td className="px-4 py-2 text-gray-400">{pallet.receivedDate || '—'}</td>
                               <td className="px-4 py-2 text-white">{pallet.units}</td>
                               <td className="px-4 py-2 text-gray-300">{pallet.cartons}</td>
                               <td className="px-4 py-2">{pallet.scanned ? <span className="text-xs bg-green-500/10 text-green-400 px-2 py-0.5 rounded-full">Scanned</span> : <span className="text-xs text-gray-500">Pending</span>}</td>
@@ -1000,7 +1080,7 @@ const revertOrder = async (order) => {
                   <span className="text-gray-400">Pieces: <span className="text-white font-semibold">{allocations.reduce((s, a) => s + a.pallets.filter(p => p.selected).reduce((ss, p) => ss + p.units, 0), 0)}</span></span>
                   <span className="text-gray-400">Cartons: <span className="text-white font-semibold">{allocations.reduce((s, a) => s + a.pallets.filter(p => p.selected).reduce((ss, p) => ss + p.cartons, 0), 0)}</span></span>
                   <span className="text-gray-400">Pallets: <span className="text-white font-semibold">{allocations.reduce((s, a) => s + a.pallets.filter(p => p.selected).length, 0)}</span></span>
-                  {scannedPallets.length > 0 && <span className="text-green-400">âœ“ {scannedPallets.length} scanned</span>}
+                  {scannedPallets.length > 0 && <span className="text-green-400">✓ {scannedPallets.length} scanned</span>}
                 </div>
                 <div className="flex gap-3">
                   <button onClick={() => setShowPickModal(false)} className="px-4 py-2 text-sm text-gray-400 hover:text-white">Close</button>
@@ -1020,9 +1100,9 @@ const revertOrder = async (order) => {
     )
   }
 
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════════════════════════════
   // LIST VIEW
-  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // ═══════════════════════════════════════════════════════════════════
   return (
     <div className="p-6">
       {openTabs.length > 0 && (
@@ -1032,7 +1112,7 @@ const revertOrder = async (order) => {
             <div key={tab.id} onClick={() => switchTab(tab)}
               className="flex items-center gap-2 px-3 py-2 text-xs cursor-pointer border-b-2 border-transparent text-gray-400 hover:text-white hover:border-gray-600 transition-colors">
               <Pencil size={10} />
-              <span className="max-w-32 truncate">{tab.orderNumber} â€” {tab.clientName}</span>
+              <span className="max-w-32 truncate">{tab.orderNumber} — {tab.clientName}</span>
               <button onClick={e => closeTab(e, tab.id)} className="text-gray-600 hover:text-red-400 ml-1"><X size={11} /></button>
             </div>
           ))}
@@ -1137,11 +1217,11 @@ const revertOrder = async (order) => {
                 <tr key={order.id} onClick={() => openTab(order)}
                   className={`border-b border-gray-800/50 hover:bg-gray-800/40 cursor-pointer transition-colors ${i % 2 === 0 ? '' : 'bg-gray-800/10'} ${isOpen ? 'bg-blue-500/5' : ''}`}>
                   <td className="px-4 py-3 text-gray-500 text-xs">{i + 1}</td>
-                  <td className="px-4 py-3 text-blue-400 text-xs font-mono">{order.transactionId || '—'}</td>
+                  <td className="px-4 py-3 text-blue-400 text-xs font-mono">{order.transactionId || '�'}</td>
                   <td className="px-4 py-3 text-gray-300 text-xs">{order.orderDate || new Date(order.createdAt).toLocaleDateString()}</td>
                   <td className="px-4 py-3 text-white font-medium">{order.clientName}</td>
-                  <td className="px-4 py-3 text-blue-400 text-xs font-mono">{order.orderNumber || 'â€”'}</td>
-                  <td className="px-4 py-3 text-blue-400 text-xs font-mono">{order.transactionId || order.orderNumber || 'â€"'}</td>
+                  <td className="px-4 py-3 text-blue-400 text-xs font-mono">{order.orderNumber || '—'}</td>
+                  <td className="px-4 py-3 text-blue-400 text-xs font-mono">{order.transactionId || order.orderNumber || '�"'}</td>
                   <td className="px-4 py-3 text-gray-300 text-xs">{order.items?.length || 0}</td>
                   <td className="px-4 py-3 text-gray-300 text-xs">{order.totalUnits || 0}</td>
                   <td className="px-4 py-3 text-gray-300 text-xs">${Number(order.totalCharges || 0).toFixed(2)}</td>

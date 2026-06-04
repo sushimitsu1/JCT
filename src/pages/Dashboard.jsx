@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { signOut } from 'firebase/auth'
 import { auth } from '../firebase'
 import { collection, getDocs } from 'firebase/firestore'
@@ -150,7 +150,7 @@ export default function Dashboard() {
   return (
     <div style={{ background: t.mainBg }} className="flex h-screen overflow-hidden">
 
-      {/* ── Mobile menu overlay ── */}
+      {/* -- Mobile menu overlay -- */}
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-50 flex md:hidden" onClick={() => setMobileMenuOpen(false)}>
           <div
@@ -253,7 +253,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── Main content ── */}
+      {/* -- Main content -- */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
 
         {/* Header */}
@@ -262,7 +262,7 @@ export default function Dashboard() {
           className="h-12 flex items-center px-4 justify-between flex-shrink-0"
         >
           <div className="flex items-center gap-3">
-            {/* Hamburger — mobile only */}
+            {/* Hamburger � mobile only */}
             <button
               onClick={() => setMobileMenuOpen(true)}
               style={{ color: t.headerText }}
@@ -270,11 +270,11 @@ export default function Dashboard() {
             >
               <Menu size={20} />
             </button>
-            {/* Title — desktop */}
+            {/* Title � desktop */}
             <span style={{ color: t.headerText }} className="text-sm font-medium opacity-70 desktop-sidebar">
               JCT Logistics Inc.
             </span>
-            {/* Active page label — mobile */}
+            {/* Active page label � mobile */}
             <span style={{ color: t.headerText }} className="text-sm font-semibold mobile-page-title">
               {activeTab?.label}
             </span>
@@ -307,7 +307,7 @@ export default function Dashboard() {
                   >
                     <span>{th.emoji}</span>
                     {th.label}
-                    {themeId === th.id && <span className="ml-auto text-xs">✓</span>}
+                    {themeId === th.id && <span className="ml-auto text-xs">?</span>}
                   </button>
                 ))}
               </div>
@@ -315,7 +315,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Global Tab Bar — horizontally scrollable */}
+        {/* Global Tab Bar � horizontally scrollable */}
         <div
           style={{ background: t.sidebar, borderBottom: `1px solid ${t.sidebarBorder}` }}
           className="flex items-center overflow-x-auto flex-shrink-0 scrollbar-hide"
