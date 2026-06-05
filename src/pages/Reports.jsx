@@ -4,7 +4,7 @@ import { db } from '../firebase'
 import {
   BarChart3, TrendingUp, Package, DollarSign, ShoppingCart, Calendar,
   Download, RefreshCw, X, LayoutDashboard, Truck, Wallet, Boxes, MapPin,
-  AlertTriangle, Users
+  AlertTriangle, Users, Receipt, FileText
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import {
@@ -67,17 +67,23 @@ const presets = [
 ]
 
 const TABS = [
-  { id: 'overview',   label: 'Overview',   icon: LayoutDashboard },
-  { id: 'operations', label: 'Operations', icon: Truck },
-  { id: 'financial',  label: 'Financial',  icon: Wallet },
-  { id: 'inventory',  label: 'Inventory',  icon: Boxes },
-  { id: 'locations',  label: 'Locations',  icon: MapPin },
+  { id: 'overview',     label: 'Overview',     icon: LayoutDashboard },
+  { id: 'operations',   label: 'Operations',   icon: Truck },
+  { id: 'transactions', label: 'Transactions', icon: Receipt },
+  { id: 'inventory',    label: 'Inventory',    icon: Boxes },
+  { id: 'locations',    label: 'Locations',    icon: MapPin },
 ]
 
 const CHART_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16']
 const STATUS_COLORS = { pending: '#f59e0b', picking: '#3b82f6', shipped: '#10b981', cancelled: '#ef4444' }
 const CONDITION_COLORS = { A: '#10b981', B: '#f59e0b', C: '#ef4444' }
 const AGING_COLORS = { '0-30': '#10b981', '31-60': '#f59e0b', '61-90': '#fb923c', '90+': '#ef4444' }
+
+const TXN_TYPE_COLORS = {
+  receipt: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
+  order:   'bg-blue-500/10 text-blue-400 border-blue-500/20',
+  invoice: 'bg-green-500/10 text-green-400 border-green-500/20',
+}
 
 const axisStyle = { fontSize: 11, fill: '#9ca3af' }
 const gridStyle = { stroke: '#374151', strokeDasharray: '3 3' }
@@ -98,9 +104,13 @@ export default function Reports() {
   })
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().slice(0, 10))
 
-  // Filters for Item Stock report
   const [stockClientFilter, setStockClientFilter] = useState('')
   const [stockSearch, setStockSearch] = useState('')
+
+  // Transactions filters
+  const [txnTypeFilter, setTxnTypeFilter] = useState('')   // '' | 'receipt' | 'order' | 'invoice'
+  const [txnClientFilter, setTxnClientFilter] = useState('')
+  const [txnSearch, setTxnSearch] = useState('')
 
   const fetchAll = async () => {
     setRefreshing(true)
@@ -178,15 +188,6 @@ export default function Reports() {
     }
   }).filter(r => r.pallets > 0).sort((a, b) => b.units - a.units), [data.clients, data.inventory])
 
-  const revenueByClient = useMemo(() => data.clients.map(c => {
-    const ci = filteredInvoices.filter(i => i.clientId === c.id)
-    return {
-      name: c.companyName || c.id,
-      revenue: ci.reduce((s, i) => s + Number(i.total || 0), 0),
-      invoices: ci.length,
-    }
-  }).filter(r => r.revenue > 0).sort((a, b) => b.revenue - a.revenue), [data.clients, filteredInvoices])
-
   const ordersByStatus = useMemo(() => ['pending', 'picking', 'shipped', 'cancelled'].map(s => ({
     name: s.charAt(0).toUpperCase() + s.slice(1),
     value: filteredOrders.filter(o => o.status === s).length,
@@ -240,11 +241,109 @@ export default function Reports() {
   }, [data.inventory])
 
   // ═══════════════════════════════════════════════════════════════
-  //  NEW REPORTS (Phase B)
+  //  TRANSACTIONS (NEW)
   // ═══════════════════════════════════════════════════════════════
+  // Canonical transactions only: confirmed/complete receipts, shipped orders, saved invoices
 
-  // ─── 1. ITEM STOCK REPORT ───
-  // Group inventory by client+SKU, join catalog for description/UPP
+  const transactions = useMemo(() => {
+    const rows = []
+
+    // Receipts — confirmed or complete only
+    filteredReceipts
+      .filter(r => r.status === 'confirmed' || r.status === 'complete')
+      .forEach(r => {
+        // Count pallets + units from inventory side (more accurate), fallback to lineItems
+        const lineItemUnits = (r.lineItems || []).reduce((s, li) =>
+          s + (li.pallets || []).reduce((ss, p) => ss + Number(p.units || 0), 0), 0)
+        const lineItemPallets = (r.lineItems || []).reduce((s, li) =>
+          s + ((li.pallets || []).length || 0), 0)
+        rows.push({
+          id: 'receipt-' + r.id,
+          type: 'receipt',
+          typeLabel: 'Receipt',
+          date: receiptDate(r),
+          refNumber: r.transactionId || r.referenceId || r.id.slice(-6).toUpperCase(),
+          clientId: r.clientId,
+          clientName: r.clientName || clientName(r.clientId),
+          units: lineItemUnits || Number(r.totalUnits || 0),
+          pallets: lineItemPallets || Number(r.totalPallets || 0),
+          amount: Number(r.totalCharges || 0),
+          status: r.status,
+          sourceId: r.id,
+          source: r,
+        })
+      })
+
+    // Orders — shipped only
+    filteredOrders
+      .filter(o => o.status === 'shipped')
+      .forEach(o => {
+        const allocUnits = (o.inventoryAllocations || []).reduce((s, a) => s + Number(a.unitsAllocated || 0), 0)
+        const allocPallets = (o.inventoryAllocations || []).length
+        rows.push({
+          id: 'order-' + o.id,
+          type: 'order',
+          typeLabel: 'Order',
+          date: orderDate(o),
+          refNumber: o.orderNumber || o.transactionId || o.id.slice(-6).toUpperCase(),
+          clientId: o.clientId,
+          clientName: o.clientName || clientName(o.clientId),
+          units: allocUnits,
+          pallets: allocPallets,
+          amount: Number(o.totalCharges || 0),
+          status: o.status,
+          picker: o.pickedByName || o.shippedByName || '',
+          sourceId: o.id,
+          source: o,
+        })
+      })
+
+    // Invoices — all saved invoices in range
+    filteredInvoices.forEach(i => {
+      rows.push({
+        id: 'invoice-' + i.id,
+        type: 'invoice',
+        typeLabel: 'Invoice',
+        date: invoiceDate(i),
+        refNumber: i.invoiceNumber || i.id.slice(-6).toUpperCase(),
+        clientId: i.clientId,
+        clientName: i.clientName || clientName(i.clientId),
+        units: 0,
+        pallets: 0,
+        amount: Number(i.total || 0),
+        status: i.status || 'pending',
+        period: i.period || '',
+        sourceId: i.id,
+        source: i,
+      })
+    })
+
+    return rows.sort((a, b) => (b.date?.getTime() || 0) - (a.date?.getTime() || 0))
+  }, [filteredReceipts, filteredOrders, filteredInvoices, data.clients])
+
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter(t => {
+      if (txnTypeFilter && t.type !== txnTypeFilter) return false
+      if (txnClientFilter && t.clientId !== txnClientFilter) return false
+      if (txnSearch) {
+        const s = txnSearch.toLowerCase()
+        const hay = [t.refNumber, t.clientName, t.picker, t.period].filter(Boolean).join(' ').toLowerCase()
+        if (!hay.includes(s)) return false
+      }
+      return true
+    })
+  }, [transactions, txnTypeFilter, txnClientFilter, txnSearch])
+
+  const txnCounts = useMemo(() => ({
+    receipt: transactions.filter(t => t.type === 'receipt').length,
+    order:   transactions.filter(t => t.type === 'order').length,
+    invoice: transactions.filter(t => t.type === 'invoice').length,
+  }), [transactions])
+
+  const txnTotalAmount = filteredTransactions.reduce((s, t) => s + (t.amount || 0), 0)
+  const txnTotalUnits  = filteredTransactions.reduce((s, t) => s + (t.units || 0), 0)
+
+  // ─── Item stock + aging + velocity (unchanged) ───
   const itemStock = useMemo(() => {
     const map = new Map()
     data.inventory.forEach(inv => {
@@ -257,44 +356,33 @@ export default function Reports() {
           sku: inv.sku,
           description: catalog?.description || inv.description || '',
           unitsPerPallet: Number(catalog?.unitsPerPallet || 0),
-          units: 0,
-          pallets: 0,
-          locations: new Set(),
-          available: 0,
-          allocated: 0,
-          onHold: 0,
+          units: 0, pallets: 0, locations: new Set(),
+          available: 0, allocated: 0, onHold: 0,
         })
       }
       const e = map.get(key)
       const u = Number(inv.units || inv.quantity || 0)
-      e.units += u
-      e.pallets += 1
+      e.units += u; e.pallets += 1
       if (inv.location) e.locations.add(inv.location)
       const status = inv.status || 'available'
       if (status === 'available') e.available += u
       else if (status === 'allocated') e.allocated += u
       else if (status === 'on-hold') e.onHold += u
     })
-    return Array.from(map.values()).map(r => ({
-      ...r,
-      locationCount: r.locations.size,
-      locations: undefined,
-    })).sort((a, b) => b.units - a.units)
+    return Array.from(map.values()).map(r => ({ ...r, locationCount: r.locations.size, locations: undefined }))
+      .sort((a, b) => b.units - a.units)
   }, [data.inventory, data.items, data.clients])
 
-  const filteredItemStock = useMemo(() => {
-    return itemStock.filter(r => {
-      if (stockClientFilter && r.clientId !== stockClientFilter) return false
-      if (stockSearch) {
-        const s = stockSearch.toLowerCase()
-        const hay = [r.sku, r.description, r.clientName].filter(Boolean).join(' ').toLowerCase()
-        if (!hay.includes(s)) return false
-      }
-      return true
-    })
-  }, [itemStock, stockClientFilter, stockSearch])
+  const filteredItemStock = useMemo(() => itemStock.filter(r => {
+    if (stockClientFilter && r.clientId !== stockClientFilter) return false
+    if (stockSearch) {
+      const s = stockSearch.toLowerCase()
+      const hay = [r.sku, r.description, r.clientName].filter(Boolean).join(' ').toLowerCase()
+      if (!hay.includes(s)) return false
+    }
+    return true
+  }), [itemStock, stockClientFilter, stockSearch])
 
-  // ─── 2. AGING INVENTORY ───
   const aging = useMemo(() => {
     const now = new Date()
     const buckets = { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 }
@@ -303,21 +391,17 @@ export default function Reports() {
       const d = inventoryDate(inv)
       const days = d ? daysBetween(d, now) : null
       let bucket
-      if (days === null) bucket = '0-30' // undated -> treat as new
+      if (days === null) bucket = '0-30'
       else if (days <= 30) bucket = '0-30'
       else if (days <= 60) bucket = '31-60'
       else if (days <= 90) bucket = '61-90'
       else bucket = '90+'
       buckets[bucket] += 1
       palletDetails.push({
-        palletId: inv.palletId || inv.id,
-        sku: inv.sku || '',
+        palletId: inv.palletId || inv.id, sku: inv.sku || '',
         clientName: inv.clientName || clientName(inv.clientId),
         units: Number(inv.units || inv.quantity || 0),
-        location: inv.location || '',
-        receivedDate: d,
-        days: days ?? 0,
-        bucket,
+        location: inv.location || '', receivedDate: d, days: days ?? 0, bucket,
       })
     })
     const series = Object.entries(buckets).map(([name, value]) => ({ name, value, color: AGING_COLORS[name] }))
@@ -326,59 +410,42 @@ export default function Reports() {
 
   const stalePallets = useMemo(() => aging.palletDetails.filter(p => p.bucket === '90+'), [aging])
 
-  // ─── 3. TOP SKUs BY VELOCITY ───
-  // Sum allocated units across shipped orders in range, by SKU
   const topSkus = useMemo(() => {
     const map = new Map()
-    filteredOrders
-      .filter(o => o.status === 'shipped')
-      .forEach(o => {
-        (o.inventoryAllocations || []).forEach(a => {
-          const sku = a.sku
-          if (!sku) return
-          if (!map.has(sku)) {
-            const catalog = data.items.find(it => it.sku === sku)
-            map.set(sku, {
-              sku,
-              description: catalog?.description || '',
-              unitsShipped: 0,
-              ordersShipped: new Set(),
-              palletsShipped: new Set(),
-            })
-          }
-          const e = map.get(sku)
-          e.unitsShipped += Number(a.unitsAllocated || 0)
-          e.ordersShipped.add(o.id)
-          if (a.palletId) e.palletsShipped.add(a.palletId)
-        })
+    filteredOrders.filter(o => o.status === 'shipped').forEach(o => {
+      (o.inventoryAllocations || []).forEach(a => {
+        const sku = a.sku
+        if (!sku) return
+        if (!map.has(sku)) {
+          const catalog = data.items.find(it => it.sku === sku)
+          map.set(sku, { sku, description: catalog?.description || '', unitsShipped: 0, ordersShipped: new Set(), palletsShipped: new Set() })
+        }
+        const e = map.get(sku)
+        e.unitsShipped += Number(a.unitsAllocated || 0)
+        e.ordersShipped.add(o.id)
+        if (a.palletId) e.palletsShipped.add(a.palletId)
       })
+    })
     return Array.from(map.values()).map(r => ({
-      sku: r.sku,
-      description: r.description,
-      unitsShipped: r.unitsShipped,
-      orderCount: r.ordersShipped.size,
-      palletCount: r.palletsShipped.size,
+      sku: r.sku, description: r.description,
+      unitsShipped: r.unitsShipped, orderCount: r.ordersShipped.size, palletCount: r.palletsShipped.size,
     })).sort((a, b) => b.unitsShipped - a.unitsShipped)
   }, [filteredOrders, data.items])
 
-  // ─── 4. PICKER PRODUCTIVITY ───
   const pickerProductivity = useMemo(() => {
     const map = new Map()
-    filteredOrders
-      .filter(o => o.status === 'shipped' && (o.pickedByName || o.pickedBy))
-      .forEach(o => {
-        const key = o.pickedByName || o.pickedBy
-        if (!map.has(key)) map.set(key, { name: key, ordersPicked: 0, unitsPicked: 0, palletsPicked: 0 })
-        const e = map.get(key)
-        e.ordersPicked += 1
-        const allocs = o.inventoryAllocations || []
-        e.unitsPicked += allocs.reduce((s, a) => s + Number(a.unitsAllocated || 0), 0)
-        e.palletsPicked += new Set(allocs.map(a => a.palletId).filter(Boolean)).size
-      })
+    filteredOrders.filter(o => o.status === 'shipped' && (o.pickedByName || o.pickedBy)).forEach(o => {
+      const key = o.pickedByName || o.pickedBy
+      if (!map.has(key)) map.set(key, { name: key, ordersPicked: 0, unitsPicked: 0, palletsPicked: 0 })
+      const e = map.get(key)
+      e.ordersPicked += 1
+      const allocs = o.inventoryAllocations || []
+      e.unitsPicked += allocs.reduce((s, a) => s + Number(a.unitsAllocated || 0), 0)
+      e.palletsPicked += new Set(allocs.map(a => a.palletId).filter(Boolean)).size
+    })
     return Array.from(map.values()).sort((a, b) => b.unitsPicked - a.unitsPicked)
   }, [filteredOrders])
 
-  // ─── 5. STORAGE UTILIZATION ───
   const storageUtilization = useMemo(() => {
     const palletCountByLoc = new Map()
     data.inventory.forEach(inv => {
@@ -390,16 +457,11 @@ export default function Reports() {
       const cap = Number(loc.capacity || 0)
       const utilization = cap > 0 ? Math.round((used / cap) * 100) : null
       return {
-        label: loc.label || loc.id,
-        capacity: cap,
-        used,
+        label: loc.label || loc.id, capacity: cap, used,
         free: cap > 0 ? Math.max(0, cap - used) : 0,
-        utilization,
-        type: loc.type || 'floor',
-        active: loc.active !== false,
+        utilization, type: loc.type || 'floor', active: loc.active !== false,
       }
     }).filter(r => r.active)
-    // summary buckets
     const withCap = rows.filter(r => r.capacity > 0)
     const total = withCap.length
     const summary = {
@@ -414,7 +476,23 @@ export default function Reports() {
     return { rows: rows.sort((a, b) => (b.utilization ?? -1) - (a.utilization ?? -1)), summary }
   }, [data.inventory, data.locations])
 
-  // ─── Excel export ────────────────────────────────────────────
+  // ─── Excel exports ────────────────────────────────────────────
+  const exportSheet = (rows, sheetName, fileName) => {
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), sheetName)
+    XLSX.writeFile(wb, fileName)
+  }
+
+  const exportTransactions = () => {
+    const rows = [['Type', 'Date', 'Reference #', 'Client', 'Pallets', 'Units', 'Amount ($)', 'Status', 'Notes']]
+    filteredTransactions.forEach(t => rows.push([
+      t.typeLabel, fmtDate(t.date), t.refNumber, t.clientName,
+      t.pallets || '', t.units || '', t.amount || 0, t.status || '',
+      t.picker ? `Picker: ${t.picker}` : (t.period || '')
+    ]))
+    exportSheet(rows, 'Transactions', `JCT-Transactions-${new Date().toISOString().slice(0, 10)}.xlsx`)
+  }
+
   const exportAll = () => {
     const wb = XLSX.utils.book_new()
     const rangeLabel = (fromD && toD) ? `${dateFrom} to ${dateTo}` : 'All time'
@@ -431,6 +509,14 @@ export default function Reports() {
       ['Current units', totalUnits],
     ]
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), 'Summary')
+
+    const txnSheet = [['Type', 'Date', 'Reference #', 'Client', 'Pallets', 'Units', 'Amount ($)', 'Status', 'Notes']]
+    transactions.forEach(t => txnSheet.push([
+      t.typeLabel, fmtDate(t.date), t.refNumber, t.clientName,
+      t.pallets || '', t.units || '', t.amount || 0, t.status || '',
+      t.picker ? `Picker: ${t.picker}` : (t.period || '')
+    ]))
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(txnSheet), 'Transactions')
 
     const stockSheet = [['Client', 'SKU', 'Description', 'Units', 'Pallets', 'Available', 'Allocated', 'On-hold', 'Locations']]
     itemStock.forEach(r => stockSheet.push([r.clientName, r.sku, r.description, r.units, r.pallets, r.available, r.allocated, r.onHold, r.locationCount]))
@@ -456,29 +542,7 @@ export default function Reports() {
     inventoryByClient.forEach(r => invSheet.push([r.name, r.pallets, r.units]))
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(invSheet), 'Inventory by Client')
 
-    const revSheet = [['Client', 'Invoices', 'Revenue']]
-    revenueByClient.forEach(r => revSheet.push([r.name, r.invoices, r.revenue]))
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(revSheet), 'Revenue by Client')
-
-    const throughputSheet = [['Date', 'Receipts', 'Shipments']]
-    throughput.forEach(r => throughputSheet.push([r.date, r.receipts, r.shipments]))
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(throughputSheet), 'Throughput')
-
-    const ordersSheet = [['Order #', 'Client', 'Status', 'Order Date', 'Shipped Date', 'Picker', 'Lines']]
-    filteredOrders.forEach(o => ordersSheet.push([
-      o.orderNumber || o.id, clientName(o.clientId) || o.clientName || '',
-      o.status || '', fmtDate(orderDate(o)), fmtDate(toDate(o.shippedDate || o.shippedAt)),
-      o.pickedByName || '', (o.lineItems || []).length,
-    ]))
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ordersSheet), 'Orders')
-
     XLSX.writeFile(wb, `JCT-Reports-${new Date().toISOString().slice(0, 10)}.xlsx`)
-  }
-
-  const exportSheet = (rows, sheetName, fileName) => {
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), sheetName)
-    XLSX.writeFile(wb, fileName)
   }
 
   if (loading) return (
@@ -489,6 +553,7 @@ export default function Reports() {
 
   return (
     <div className="p-6 space-y-4 max-w-[1600px] mx-auto">
+      {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-xl font-semibold text-white flex items-center gap-2">
@@ -510,6 +575,7 @@ export default function Reports() {
         </div>
       </div>
 
+      {/* Date range */}
       <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 space-y-3">
         <div className="flex items-center gap-3 flex-wrap">
           <Calendar size={14} className="text-gray-400" />
@@ -540,6 +606,7 @@ export default function Reports() {
         </div>
       </div>
 
+      {/* Tabs */}
       <div className="flex gap-1 border-b border-gray-800 overflow-x-auto">
         {TABS.map(t => {
           const Icon = t.icon
@@ -566,7 +633,6 @@ export default function Reports() {
             <KPI icon={Package}      label="Current pallets" value={totalPallets}       color="text-cyan-400" />
             <KPI icon={TrendingUp}   label="Current units"   value={totalUnits.toLocaleString()} color="text-pink-400" />
           </div>
-
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             <Card title="Receipts vs shipments" subtitle="Daily activity in range" wide>
               <ChartLine data={throughput}
@@ -589,15 +655,13 @@ export default function Reports() {
             <KPI icon={ShoppingCart} label="Open orders"      value={openOrders}     color="text-yellow-400" />
             <KPI icon={TrendingUp}   label="Net flow"         value={totalReceived - shippedOrders} color="text-blue-400" />
           </div>
-
           <Card title="Throughput — receipts vs shipments" subtitle="Daily volume in range"
             onExport={() => exportSheet([['Date', 'Receipts', 'Shipments'], ...throughput.map(r => [r.date, r.receipts, r.shipments])], 'Throughput', 'JCT-Throughput.xlsx')}>
             <ChartLine data={throughput} height={300}
               lines={[{ key: 'receipts', name: 'Receipts', color: '#8b5cf6' }, { key: 'shipments', name: 'Shipments', color: '#10b981' }]}
               empty={!throughput.some(d => d.receipts || d.shipments) && 'No activity in range'} />
           </Card>
-
-          <Card title="Top SKUs by velocity" subtitle="Units shipped in range (from inventory allocations)"
+          <Card title="Top SKUs by velocity" subtitle="Units shipped in range"
             onExport={() => exportSheet(
               [['SKU', 'Description', 'Units Shipped', 'Orders', 'Pallets'], ...topSkus.map(r => [r.sku, r.description, r.unitsShipped, r.orderCount, r.palletCount])],
               'Top SKUs', 'JCT-Top-SKUs.xlsx'
@@ -636,21 +700,17 @@ export default function Reports() {
               </>
             )}
           </Card>
-
           <Card title="Picker productivity" subtitle="Orders shipped in range, grouped by picker"
             onExport={() => exportSheet(
               [['Picker', 'Orders', 'Units', 'Pallets'], ...pickerProductivity.map(r => [r.name, r.ordersPicked, r.unitsPicked, r.palletsPicked])],
               'Pickers', 'JCT-Picker-productivity.xlsx'
             )}>
             {pickerProductivity.length === 0 ? (
-              <Placeholder icon={Users} label="No shipped orders with picker info in range. Assign pickers on orders to start tracking." />
+              <Placeholder icon={Users} label="No shipped orders with picker info in range." />
             ) : (
               <>
                 <ChartBar data={pickerProductivity} xKey="name"
-                  bars={[
-                    { key: 'unitsPicked', name: 'Units', color: '#10b981' },
-                    { key: 'ordersPicked', name: 'Orders', color: '#3b82f6' },
-                  ]} />
+                  bars={[{ key: 'unitsPicked', name: 'Units', color: '#10b981' }, { key: 'ordersPicked', name: 'Orders', color: '#3b82f6' }]} />
                 <div className="mt-4 overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead className="text-gray-400 uppercase">
@@ -678,39 +738,111 @@ export default function Reports() {
               </>
             )}
           </Card>
-
-          <Card title="Orders by status" subtitle="In range">
-            <ChartPie data={ordersByStatus} empty={ordersByStatus.length === 0 && 'No orders in range'} />
-          </Card>
         </div>
       )}
 
-      {/* FINANCIAL */}
-      {activeTab === 'financial' && (
+      {/* TRANSACTIONS */}
+      {activeTab === 'transactions' && (
         <div className="space-y-4">
+          {/* Financial KPIs (kept from old Financial tab) */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <KPI icon={DollarSign} label="Revenue (range)" value={`$${totalRevenue.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} color="text-green-400" />
-            <KPI icon={DollarSign} label="Invoices"        value={filteredInvoices.length} color="text-blue-400" />
-            <KPI icon={DollarSign} label="Avg / invoice"
-              value={`$${(filteredInvoices.length ? totalRevenue / filteredInvoices.length : 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
+            <KPI icon={Receipt}    label="Total transactions" value={transactions.length} color="text-blue-400" />
+            <KPI icon={DollarSign} label="Filtered amount"
+              value={`$${txnTotalAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
               color="text-cyan-400" />
-            <KPI icon={DollarSign} label="Clients billed"  value={revenueByClient.length} color="text-purple-400" />
+            <KPI icon={TrendingUp} label="Filtered units" value={txnTotalUnits.toLocaleString()} color="text-pink-400" />
           </div>
 
+          {/* Revenue trend */}
           <Card title="Revenue trend" subtitle="Daily revenue from invoices in range"
             onExport={() => exportSheet([['Date', 'Revenue'], ...revenueTrend.map(r => [r.date, r.revenue])], 'Revenue', 'JCT-Revenue-trend.xlsx')}>
-            <ChartLine data={revenueTrend} height={280}
+            <ChartLine data={revenueTrend} height={220}
               lines={[{ key: 'revenue', name: 'Revenue', color: '#10b981' }]}
               yFormat={v => `$${v.toLocaleString()}`}
               empty={!revenueTrend.some(d => d.revenue) && 'No invoices in range'} />
           </Card>
 
-          <Card title="Revenue by client" subtitle="In range"
-            onExport={() => exportSheet([['Client', 'Invoices', 'Revenue'], ...revenueByClient.map(r => [r.name, r.invoices, r.revenue])], 'Revenue', 'JCT-Revenue-by-client.xlsx')}>
-            <ChartBar data={revenueByClient.slice(0, 15)} xKey="name"
-              bars={[{ key: 'revenue', name: 'Revenue', color: '#10b981' }]}
-              yFormat={v => `$${v.toLocaleString()}`}
-              empty={revenueByClient.length === 0 && 'No revenue in range'} />
+          {/* Transactions table */}
+          <Card title="All transactions" subtitle="Confirmed receipts, shipped orders, and saved invoices" onExport={exportTransactions}>
+            {/* Filters */}
+            <div className="flex items-center gap-2 mb-3 flex-wrap">
+              <div className="flex gap-1">
+                {[
+                  { id: '',         label: `All (${transactions.length})` },
+                  { id: 'receipt',  label: `Receipts (${txnCounts.receipt})` },
+                  { id: 'order',    label: `Orders (${txnCounts.order})` },
+                  { id: 'invoice',  label: `Invoices (${txnCounts.invoice})` },
+                ].map(f => (
+                  <button key={f.id} onClick={() => setTxnTypeFilter(f.id)}
+                    className={`text-xs px-2.5 py-1 rounded-full border ${
+                      txnTypeFilter === f.id
+                        ? 'bg-blue-600 text-white border-blue-500'
+                        : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'
+                    }`}>{f.label}</button>
+                ))}
+              </div>
+              <input
+                type="text"
+                placeholder="Search ref #, client, picker..."
+                value={txnSearch}
+                onChange={(e) => setTxnSearch(e.target.value)}
+                className="bg-gray-800 border border-gray-700 rounded-lg text-white text-sm px-3 py-1.5 flex-1 min-w-[200px]"
+              />
+              <select
+                value={txnClientFilter}
+                onChange={(e) => setTxnClientFilter(e.target.value)}
+                className="bg-gray-800 border border-gray-700 rounded-lg text-white text-sm px-3 py-1.5"
+              >
+                <option value="">All clients</option>
+                {data.clients.map(c => <option key={c.id} value={c.id}>{c.companyName}</option>)}
+              </select>
+              <span className="text-xs text-gray-500">{filteredTransactions.length} of {transactions.length}</span>
+            </div>
+
+            {filteredTransactions.length === 0 ? (
+              <Placeholder icon={Receipt} label="No transactions match these filters" />
+            ) : (
+              <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="text-gray-400 uppercase sticky top-0 bg-gray-900">
+                    <tr>
+                      <th className="px-2 py-1.5 text-left">Type</th>
+                      <th className="px-2 py-1.5 text-left">Date</th>
+                      <th className="px-2 py-1.5 text-left">Reference</th>
+                      <th className="px-2 py-1.5 text-left">Client</th>
+                      <th className="px-2 py-1.5 text-right">Pallets</th>
+                      <th className="px-2 py-1.5 text-right">Units</th>
+                      <th className="px-2 py-1.5 text-right">Amount</th>
+                      <th className="px-2 py-1.5 text-left">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredTransactions.slice(0, 500).map(t => (
+                      <tr key={t.id} className="border-t border-gray-800 hover:bg-gray-800/40">
+                        <td className="px-2 py-1.5">
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full border ${TXN_TYPE_COLORS[t.type]}`}>
+                            {t.typeLabel}
+                          </span>
+                        </td>
+                        <td className="px-2 py-1.5 text-gray-300 whitespace-nowrap">{fmtDate(t.date)}</td>
+                        <td className="px-2 py-1.5 font-mono text-white">{t.refNumber}</td>
+                        <td className="px-2 py-1.5 text-gray-300 truncate max-w-[180px]">{t.clientName}</td>
+                        <td className="px-2 py-1.5 text-right text-gray-300">{t.pallets || ''}</td>
+                        <td className="px-2 py-1.5 text-right text-white font-medium">{t.units ? t.units.toLocaleString() : ''}</td>
+                        <td className="px-2 py-1.5 text-right text-green-400 whitespace-nowrap">{t.amount ? `$${t.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : ''}</td>
+                        <td className="px-2 py-1.5 text-gray-500 truncate max-w-[180px]">
+                          {t.picker ? `Picker: ${t.picker}` : (t.period || t.status || '')}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {filteredTransactions.length > 500 && (
+                  <p className="text-xs text-gray-500 mt-2 px-2">+{filteredTransactions.length - 500} more — use Export</p>
+                )}
+              </div>
+            )}
           </Card>
         </div>
       )}
@@ -724,8 +856,6 @@ export default function Reports() {
             <KPI icon={Boxes}      label="Unique SKUs"     value={itemStock.length}            color="text-blue-400" />
             <KPI icon={AlertTriangle} label="Pallets > 90 days" value={stalePallets.length}    color="text-red-400" />
           </div>
-
-          {/* Item Stock Report */}
           <Card title="Item stock report" subtitle="Current inventory grouped by SKU"
             onExport={() => exportSheet(
               [['Client', 'SKU', 'Description', 'Units', 'Pallets', 'Available', 'Allocated', 'On-hold', 'Locations'],
@@ -733,18 +863,11 @@ export default function Reports() {
               'Item Stock', 'JCT-Item-Stock.xlsx'
             )}>
             <div className="flex items-center gap-2 mb-3 flex-wrap">
-              <input
-                type="text"
-                placeholder="Search SKU, description, client..."
-                value={stockSearch}
+              <input type="text" placeholder="Search SKU, description, client..." value={stockSearch}
                 onChange={(e) => setStockSearch(e.target.value)}
-                className="bg-gray-800 border border-gray-700 rounded-lg text-white text-sm px-3 py-1.5 flex-1 min-w-[200px]"
-              />
-              <select
-                value={stockClientFilter}
-                onChange={(e) => setStockClientFilter(e.target.value)}
-                className="bg-gray-800 border border-gray-700 rounded-lg text-white text-sm px-3 py-1.5"
-              >
+                className="bg-gray-800 border border-gray-700 rounded-lg text-white text-sm px-3 py-1.5 flex-1 min-w-[200px]" />
+              <select value={stockClientFilter} onChange={(e) => setStockClientFilter(e.target.value)}
+                className="bg-gray-800 border border-gray-700 rounded-lg text-white text-sm px-3 py-1.5">
                 <option value="">All clients</option>
                 {data.clients.map(c => <option key={c.id} value={c.id}>{c.companyName}</option>)}
               </select>
@@ -788,8 +911,6 @@ export default function Reports() {
               </div>
             )}
           </Card>
-
-          {/* Aging Inventory */}
           <Card title="Aging inventory" subtitle="Pallets bucketed by days in warehouse"
             onExport={() => exportSheet(
               [['Pallet ID', 'SKU', 'Client', 'Units', 'Location', 'Received', 'Days', 'Bucket'],
@@ -842,14 +963,12 @@ export default function Reports() {
               </div>
             )}
           </Card>
-
           <Card title="Inventory by client" subtitle="Current snapshot"
             onExport={() => exportSheet([['Client', 'Pallets', 'Units'], ...inventoryByClient.map(r => [r.name, r.pallets, r.units])], 'Inventory', 'JCT-Inventory-by-client.xlsx')}>
             <ChartBar data={inventoryByClient.slice(0, 15)} xKey="name"
               bars={[{ key: 'units', name: 'Units', color: '#3b82f6' }, { key: 'pallets', name: 'Pallets', color: '#06b6d4' }]}
               empty={inventoryByClient.length === 0 && 'No inventory'} />
           </Card>
-
           <Card title="Inventory by condition" subtitle="Current units"
             onExport={() => exportSheet([['Condition', 'Units'], ...byCondition.map(r => [r.name, r.value])], 'Condition', 'JCT-Inventory-by-condition.xlsx')}>
             <ChartPie data={byCondition} empty={byCondition.length === 0 && 'No inventory'} />
@@ -866,7 +985,6 @@ export default function Reports() {
             <KPI icon={AlertTriangle} label="Over capacity" value={storageUtilization.summary.over}                color="text-red-400" />
             <KPI icon={MapPin}    label="No capacity set"  value={storageUtilization.summary.noCapacity}          color="text-yellow-400" />
           </div>
-
           <Card title="Storage utilization" subtitle="Current pallets vs each location's capacity"
             onExport={() => exportSheet(
               [['Location', 'Capacity', 'Used', 'Free', 'Utilization %', 'Type'],
@@ -874,13 +992,13 @@ export default function Reports() {
               'Utilization', 'JCT-Storage-Utilization.xlsx'
             )}>
             {storageUtilization.rows.length === 0 ? (
-              <Placeholder icon={MapPin} label="No locations configured. Add locations in the Locations module." />
+              <Placeholder icon={MapPin} label="No locations configured." />
             ) : (
               <>
                 {storageUtilization.summary.noCapacity > 0 && (
                   <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-2.5 text-xs text-yellow-300 mb-3 flex items-center gap-2">
                     <AlertTriangle size={12} />
-                    {storageUtilization.summary.noCapacity} location{storageUtilization.summary.noCapacity !== 1 ? 's have' : ' has'} no capacity set — edit them in the Locations module to include in utilization stats.
+                    {storageUtilization.summary.noCapacity} location{storageUtilization.summary.noCapacity !== 1 ? 's have' : ' has'} no capacity set.
                   </div>
                 )}
                 <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
@@ -933,7 +1051,6 @@ export default function Reports() {
               </>
             )}
           </Card>
-
           <Card title="Top locations by pallet count" subtitle="Current snapshot"
             onExport={() => exportSheet([['Location', 'Pallets', 'Units'], ...inventoryByLocation.map(r => [r.name, r.pallets, r.units])], 'Locations', 'JCT-Inventory-by-location.xlsx')}>
             <ChartBar data={inventoryByLocation.slice(0, 20)} xKey="name"

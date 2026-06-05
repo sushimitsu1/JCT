@@ -4,11 +4,12 @@ import {
   query, orderBy, runTransaction, setDoc
 } from 'firebase/firestore'
 import { db } from '../firebase'
+import jsPDF from 'jspdf'
 import {
   Plus, X, Package, ChevronDown, Search,
   ArrowLeft, Truck, DollarSign, FileText,
   CheckCircle, Clock, Pencil, Trash2, Save, Filter, X as XIcon, Layers, AlertTriangle, Hash
-} from 'lucide-react'
+ } from 'lucide-react'
 import BarcodeScanner from '../components/BarcodeScanner'
 import TransactionCharges from '../components/TransactionCharges'
 import BulkUpload from '../components/BulkUpload'
@@ -48,7 +49,7 @@ const reservePalletIds = async (count) => {
 // Detect legacy ID format (YYYYMMDD-NNNN)
 const isLegacyPalletId = (id) => typeof id === 'string' && /^\d{8}-\d{4}$/.test(id)
 
-// Old function name kept for any external references — now async
+// Old function name kept for any external references ï¿½ now async
 const generatePalletId = generateSequentialPalletId
 
 const genTransactionId = () => {
@@ -117,6 +118,105 @@ export default function Receiving() {
 
   const [showScanner, setShowScanner] = useState(false)
   const [scanTarget, setScanTarget] = useState(null)
+
+
+  const generateReceivingReport = async (r) => {
+    if (!r) return
+    // Pull canonical pallet data from inventory (tagged by receiptId)
+    const { collection: fsColl, getDocs: fsGetDocs, query: fsQuery, where: fsWhere } = await import('firebase/firestore')
+    const invSnap = await fsGetDocs(fsQuery(fsColl(db, 'inventory'), fsWhere('receiptId', '==', r.id)))
+    const palletDocs = invSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    // Group pallets by SKU (use catalog description if available)
+    const skuGroups = new Map()
+    palletDocs.forEach(p => {
+      const key = p.sku || '(no sku)'
+      if (!skuGroups.has(key)) {
+        const catalog = catalogItems.find(it => it.clientId === p.clientId && it.sku === p.sku)
+        skuGroups.set(key, { sku: key, description: p.description || catalog?.description || '', pallets: [] })
+      }
+      skuGroups.get(key).pallets.push(p)
+    })
+    const pdf = new jsPDF()
+    const pw = pdf.internal.pageSize.getWidth()
+    const ph = pdf.internal.pageSize.getHeight()
+
+    pdf.setFillColor(200, 16, 46); pdf.rect(0, 0, pw, 18, 'F')
+    pdf.setTextColor(255, 255, 255); pdf.setFontSize(14); pdf.setFont('helvetica', 'bold')
+    pdf.text('Receiving Report', pw / 2, 12, { align: 'center' })
+
+    pdf.setTextColor(200, 16, 46); pdf.setFontSize(13)
+    pdf.text(r.clientName || '', 14, 28)
+    pdf.setFontSize(9); pdf.setTextColor(27, 42, 74); pdf.setFont('helvetica', 'normal')
+    pdf.text('Warehouse: JCT LOGISTICS INC.', 14, 35)
+    pdf.text(`Date: ${new Date().toLocaleDateString()}`, 14, 41)
+
+    pdf.setTextColor(200, 16, 46); pdf.setFontSize(13); pdf.setFont('helvetica', 'bold')
+    pdf.text(`Transaction # : ${r.transactionId || r.id.slice(-6).toUpperCase()}`, pw - 14, 28, { align: 'right' })
+    pdf.setTextColor(27, 42, 74); pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9)
+    pdf.text(`Reference: ${r.referenceId || '-'}`, pw - 14, 35, { align: 'right' })
+    pdf.text(`Arrival: ${r.arrivalDate ? new Date(r.arrivalDate).toLocaleDateString() : '-'}`, pw - 14, 41, { align: 'right' })
+
+    let y = 52
+    pdf.setDrawColor(220, 220, 220); pdf.line(14, y - 2, pw - 14, y - 2)
+    pdf.setFontSize(9); pdf.setTextColor(27, 42, 74)
+    const totalPallets = palletDocs.length
+    const totalUnits = palletDocs.reduce((s, p) => s + Number(p.units || 0), 0)
+    pdf.text(`Total Pallets: ${totalPallets}`, 14, y + 4)
+    pdf.text(`Total Units: ${totalUnits}`, 80, y + 4)
+    pdf.text(`Status: ${(r.status || 'pending').toUpperCase()}`, pw - 14, y + 4, { align: 'right' })
+    y += 12
+
+    pdf.setFillColor(27, 42, 74); pdf.rect(14, y, pw - 28, 7, 'F')
+    pdf.setTextColor(255, 255, 255); pdf.setFontSize(8); pdf.setFont('helvetica', 'bold')
+    pdf.text('PALLET', 17, y + 5)
+    pdf.text('SKU', 55, y + 5)
+    pdf.text('DESCRIPTION', 90, y + 5)
+    pdf.text('UNITS', 140, y + 5)
+    pdf.text('LOCATION', 158, y + 5)
+    pdf.text('COND', pw - 18, y + 5, { align: 'right' })
+    y += 11
+
+    pdf.setTextColor(27, 42, 74); pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8)
+
+    for (const group of skuGroups.values()) {
+      if (group.pallets.length === 0) continue
+      if (y > ph - 25) { pdf.addPage(); y = 20 }
+      pdf.setFillColor(240, 240, 240); pdf.rect(14, y - 4, pw - 28, 6, 'F')
+      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(9)
+      pdf.text(`${group.sku}  -  ${group.description}`, 17, y)
+      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(8)
+      y += 5
+      for (const p of group.pallets) {
+        if (y > ph - 20) { pdf.addPage(); y = 20 }
+        pdf.text(p.palletId || '-', 17, y)
+        pdf.text(group.sku, 55, y)
+        const desc = (group.description || '').slice(0, 30)
+        pdf.text(desc, 90, y)
+        pdf.setFont('helvetica', 'bold')
+        pdf.text(String(p.units || 0), 140, y)
+        pdf.setFont('helvetica', 'normal')
+        pdf.text((p.location || '-').slice(0, 14), 158, y)
+        pdf.text(p.condition || 'A', pw - 18, y, { align: 'right' })
+        pdf.setDrawColor(235, 235, 235)
+        pdf.line(14, y + 2, pw - 14, y + 2)
+        y += 6
+      }
+      y += 2
+    }
+
+    if (y > ph - 30) { pdf.addPage(); y = 20 }
+    y = ph - 25
+    pdf.setDrawColor(27, 42, 74)
+    pdf.line(14, y, 80, y); pdf.text('Received by', 14, y + 4)
+    pdf.line(90, y, 156, y); pdf.text('Checked by', 90, y + 4)
+    pdf.line(166, y, pw - 14, y); pdf.text('Date', 166, y + 4)
+
+    pdf.save(`Receipt-${r.transactionId || r.id.slice(-6)}-Report.pdf`)
+  }
+
+
+
+
 
   const fetchData = async () => {
     const [receiptsSnap, clientsSnap, catalogSnap] = await Promise.all([
@@ -695,7 +795,7 @@ export default function Receiving() {
                     )}
                     {(item.pallets || []).length > 0 && (
                       <span className="text-gray-500 text-[10px]">
-                        · {(item.pallets || []).reduce((s, p) => s + Number(p.units || 0), 0)} total units
+                        ï¿½ {(item.pallets || []).reduce((s, p) => s + Number(p.units || 0), 0)} total units
                       </span>
                     )}
                   </div>
@@ -785,7 +885,7 @@ export default function Receiving() {
               <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-lg">
                 <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800">
                   <h3 className="text-white font-semibold flex items-center gap-2">
-                    <Hash size={16}/> Generate Pallets — {sku}
+                    <Hash size={16}/> Generate Pallets ï¿½ {sku}
                   </h3>
                   <button onClick={() => setPalletGenModal(null)} className="text-gray-400 hover:text-white">
                     <X size={18}/>
@@ -831,7 +931,7 @@ export default function Receiving() {
                           <input type="radio" checked={palletGenConfig.remainderMode === 'even'} onChange={() => setPalletGenConfig({ remainderMode: 'even' })} className="mt-0.5 accent-blue-500"/>
                           <div className="flex-1 text-xs">
                             <div className="text-white font-medium mb-0.5">Spread evenly</div>
-                            <div className="text-gray-500">Distribute {qty} units across {fullPallets} pallets — none will match the catalog quantity exactly.</div>
+                            <div className="text-gray-500">Distribute {qty} units across {fullPallets} pallets ï¿½ none will match the catalog quantity exactly.</div>
                           </div>
                         </label>
                       </div>
@@ -891,6 +991,10 @@ export default function Receiving() {
                 <X size={14}/> Delete Receipt
               </button>
             )}
+              <button onClick={() => generateReceivingReport(r)}
+                className="flex items-center gap-1.5 text-sm bg-purple-600/20 hover:bg-purple-600/40 text-purple-400 border border-purple-600/20 px-3 py-2 rounded-lg transition-colors">
+                <FileText size={14} /> Print Report
+              </button>
             {r.status === 'open' && (
               <button onClick={confirmReceipt}
                 className="flex items-center gap-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg">
@@ -1255,7 +1359,7 @@ export default function Receiving() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-800 bg-gray-800/50">
-                  {['Transaction ID', 'Reference Number', 'Creation Date', 'Customer', 'SKUs', 'Arrival Date', 'Status'].map(h => (
+                  {['Transaction ID', 'Reference Number', 'Creation Date', 'Customer', 'SKUs', 'Arrival Date', 'Status', ''].map(h => (
                     <th key={h} className="text-left px-4 py-3 text-gray-400 font-medium text-xs">{h}</th>
                   ))}
                 </tr>
@@ -1280,6 +1384,15 @@ export default function Receiving() {
                         <span className={`text-xs px-2 py-0.5 rounded-full border flex items-center gap-1 w-fit ${sc.color}`}>
                           <StatusIcon size={10} /> {sc.label}
                         </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); generateReceivingReport(r) }}
+                          title="Print receiving report"
+                          className="text-purple-400 hover:text-purple-300 p-1 rounded hover:bg-purple-500/10"
+                        >
+                          <FileText size={14} />
+                        </button>
                       </td>
                     </tr>
                   )
