@@ -7,6 +7,7 @@ import {
   AlertTriangle, Users, Receipt, FileText
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
+import { exportTxnPDF, exportTxnExcel } from '../lib/txnExports'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line
@@ -111,6 +112,8 @@ export default function Reports() {
   const [txnTypeFilter, setTxnTypeFilter] = useState('')   // '' | 'receipt' | 'order' | 'invoice'
   const [txnClientFilter, setTxnClientFilter] = useState('')
   const [txnSearch, setTxnSearch] = useState('')
+  const [selectedTxn, setSelectedTxn] = useState(null)
+  const [selectedTxnIds, setSelectedTxnIds] = useState(new Set())
 
   const fetchAll = async () => {
     setRefreshing(true)
@@ -800,6 +803,36 @@ export default function Reports() {
               <span className="text-xs text-gray-500">{filteredTransactions.length} of {transactions.length}</span>
             </div>
 
+            {/* Selection action bar */}
+            {selectedTxnIds.size > 0 && (
+              <div className="bg-blue-950/30 border border-blue-500/30 rounded-lg px-3 py-2 mb-3 flex items-center justify-between flex-wrap gap-2">
+                <span className="text-sm text-blue-300 font-medium">
+                  {selectedTxnIds.size} selected
+                  <button onClick={() => setSelectedTxnIds(new Set())} className="text-gray-400 hover:text-white text-xs underline ml-3">Clear</button>
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      const items = filteredTransactions.filter(t => selectedTxnIds.has(t.id))
+                      items.forEach(t => exportTxnPDF(t, data.inventory))
+                    }}
+                    className="bg-purple-600 hover:bg-purple-500 text-white text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5"
+                  >
+                    <FileText size={12} /> Export PDF ({selectedTxnIds.size})
+                  </button>
+                  <button
+                    onClick={() => {
+                      const items = filteredTransactions.filter(t => selectedTxnIds.has(t.id))
+                      items.forEach(t => exportTxnExcel(t, data.inventory))
+                    }}
+                    className="bg-green-600 hover:bg-green-500 text-white text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5"
+                  >
+                    <Download size={12} /> Export Excel ({selectedTxnIds.size})
+                  </button>
+                </div>
+              </div>
+            )}
+
             {filteredTransactions.length === 0 ? (
               <Placeholder icon={Receipt} label="No transactions match these filters" />
             ) : (
@@ -807,6 +840,30 @@ export default function Reports() {
                 <table className="w-full text-xs">
                   <thead className="text-gray-400 uppercase sticky top-0 bg-gray-900">
                     <tr>
+                      <th className="px-2 py-1.5 w-8">
+                        <input
+                          type="checkbox"
+                          className="accent-blue-500"
+                          checked={filteredTransactions.length > 0 && filteredTransactions.slice(0, 500).every(t => selectedTxnIds.has(t.id))}
+                          ref={el => {
+                            if (el) {
+                              const visible = filteredTransactions.slice(0, 500)
+                              const someSelected = visible.some(t => selectedTxnIds.has(t.id))
+                              const allSelected = visible.length > 0 && visible.every(t => selectedTxnIds.has(t.id))
+                              el.indeterminate = someSelected && !allSelected
+                            }
+                          }}
+                          onChange={(e) => {
+                            const visible = filteredTransactions.slice(0, 500)
+                            setSelectedTxnIds(prev => {
+                              const next = new Set(prev)
+                              if (e.target.checked) visible.forEach(t => next.add(t.id))
+                              else visible.forEach(t => next.delete(t.id))
+                              return next
+                            })
+                          }}
+                        />
+                      </th>
                       <th className="px-2 py-1.5 text-left">Type</th>
                       <th className="px-2 py-1.5 text-left">Date</th>
                       <th className="px-2 py-1.5 text-left">Reference</th>
@@ -815,27 +872,60 @@ export default function Reports() {
                       <th className="px-2 py-1.5 text-right">Units</th>
                       <th className="px-2 py-1.5 text-right">Amount</th>
                       <th className="px-2 py-1.5 text-left">Notes</th>
+                      <th className="px-2 py-1.5 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredTransactions.slice(0, 500).map(t => (
-                      <tr key={t.id} className="border-t border-gray-800 hover:bg-gray-800/40">
-                        <td className="px-2 py-1.5">
+                    {filteredTransactions.slice(0, 500).map(t => {
+                      const isSelected = selectedTxnIds.has(t.id)
+                      return (
+                      <tr key={t.id} className={`border-t border-gray-800 hover:bg-gray-800/40 cursor-pointer ${isSelected ? 'bg-blue-950/20' : ''}`}>
+                        <td className="px-2 py-1.5" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            className="accent-blue-500"
+                            checked={isSelected}
+                            onChange={() => {
+                              setSelectedTxnIds(prev => {
+                                const next = new Set(prev)
+                                if (next.has(t.id)) next.delete(t.id); else next.add(t.id)
+                                return next
+                              })
+                            }}
+                          />
+                        </td>
+                        <td className="px-2 py-1.5" onClick={() => setSelectedTxn(t)}>
                           <span className={`text-[10px] px-2 py-0.5 rounded-full border ${TXN_TYPE_COLORS[t.type]}`}>
                             {t.typeLabel}
                           </span>
                         </td>
-                        <td className="px-2 py-1.5 text-gray-300 whitespace-nowrap">{fmtDate(t.date)}</td>
-                        <td className="px-2 py-1.5 font-mono text-white">{t.refNumber}</td>
-                        <td className="px-2 py-1.5 text-gray-300 truncate max-w-[180px]">{t.clientName}</td>
-                        <td className="px-2 py-1.5 text-right text-gray-300">{t.pallets || ''}</td>
-                        <td className="px-2 py-1.5 text-right text-white font-medium">{t.units ? t.units.toLocaleString() : ''}</td>
-                        <td className="px-2 py-1.5 text-right text-green-400 whitespace-nowrap">{t.amount ? `$${t.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : ''}</td>
-                        <td className="px-2 py-1.5 text-gray-500 truncate max-w-[180px]">
+                        <td className="px-2 py-1.5 text-gray-300 whitespace-nowrap" onClick={() => setSelectedTxn(t)}>{fmtDate(t.date)}</td>
+                        <td className="px-2 py-1.5 font-mono text-white" onClick={() => setSelectedTxn(t)}>{t.refNumber}</td>
+                        <td className="px-2 py-1.5 text-gray-300 truncate max-w-[180px]" onClick={() => setSelectedTxn(t)}>{t.clientName}</td>
+                        <td className="px-2 py-1.5 text-right text-gray-300" onClick={() => setSelectedTxn(t)}>{t.pallets || ''}</td>
+                        <td className="px-2 py-1.5 text-right text-white font-medium" onClick={() => setSelectedTxn(t)}>{t.units ? t.units.toLocaleString() : ''}</td>
+                        <td className="px-2 py-1.5 text-right text-green-400 whitespace-nowrap" onClick={() => setSelectedTxn(t)}>{t.amount ? `$${t.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : ''}</td>
+                        <td className="px-2 py-1.5 text-gray-500 truncate max-w-[180px]" onClick={() => setSelectedTxn(t)}>
                           {t.picker ? `Picker: ${t.picker}` : (t.period || t.status || '')}
                         </td>
+                        <td className="px-2 py-1.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => exportTxnPDF(t, data.inventory)}
+                            title="Export PDF"
+                            className="text-purple-400 hover:text-purple-300 p-1 rounded hover:bg-purple-500/10"
+                          >
+                            <FileText size={13} />
+                          </button>
+                          <button
+                            onClick={() => exportTxnExcel(t, data.inventory)}
+                            title="Export Excel"
+                            className="text-green-400 hover:text-green-300 p-1 rounded hover:bg-green-500/10 ml-1"
+                          >
+                            <Download size={13} />
+                          </button>
+                        </td>
                       </tr>
-                    ))}
+                    )})}
                   </tbody>
                 </table>
                 {filteredTransactions.length > 500 && (
@@ -845,6 +935,15 @@ export default function Reports() {
             )}
           </Card>
         </div>
+      )}
+
+      {/* Transaction detail modal */}
+      {selectedTxn && (
+        <TransactionDetailModal
+          txn={selectedTxn}
+          inventory={data.inventory}
+          onClose={() => setSelectedTxn(null)}
+        />
       )}
 
       {/* INVENTORY */}
@@ -1149,5 +1248,212 @@ function ChartPie({ data, empty, height = 240 }) {
         <Legend wrapperStyle={{ fontSize: 12, color: '#9ca3af' }} />
       </PieChart>
     </ResponsiveContainer>
+  )
+}
+
+// ─── Transaction detail modal ────────────────────────────────
+function TransactionDetailModal({ txn, inventory, onClose }) {
+  const src = txn.source || {}
+  // For receipts, pull pallets from inventory by receiptId
+  const palletDocs = txn.type === 'receipt'
+    ? inventory.filter(i => i.receiptId === txn.sourceId)
+    : []
+
+  // Group receipt pallets by SKU
+  const skuGroups = (() => {
+    if (txn.type !== 'receipt') return []
+    const map = new Map()
+    palletDocs.forEach(p => {
+      const key = p.sku || '(no sku)'
+      if (!map.has(key)) map.set(key, { sku: key, description: p.description || '', pallets: [] })
+      map.get(key).pallets.push(p)
+    })
+    return Array.from(map.values())
+  })()
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-gray-900 border border-gray-700 rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="px-5 py-3 border-b border-gray-800 flex items-center justify-between">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className={`text-xs px-2 py-0.5 rounded-full border ${TXN_TYPE_COLORS[txn.type]}`}>
+              {txn.typeLabel}
+            </span>
+            <span className="text-white font-mono font-semibold">{txn.refNumber}</span>
+            <span className="text-xs text-gray-400">{fmtDate(txn.date)}</span>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={18} /></button>
+        </div>
+
+        {/* Body */}
+        <div className="p-5 overflow-y-auto">
+          {/* Header info */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <DetailField label="Client" value={txn.clientName} />
+            <DetailField label="Date" value={fmtDate(txn.date)} />
+            <DetailField label="Status" value={txn.status || '—'} />
+            {txn.type === 'receipt' && (
+              <>
+                <DetailField label="Total pallets" value={palletDocs.length || txn.pallets || 0} />
+                <DetailField label="Total units" value={palletDocs.reduce((s, p) => s + Number(p.units || 0), 0) || txn.units || 0} />
+                {src.referenceId && <DetailField label="Reference" value={src.referenceId} />}
+                {src.arrivalDate && <DetailField label="Arrival" value={new Date(src.arrivalDate).toLocaleDateString()} />}
+                {src.poNumber && <DetailField label="PO #" value={src.poNumber} />}
+              </>
+            )}
+            {txn.type === 'order' && (
+              <>
+                <DetailField label="Pallets shipped" value={txn.pallets} />
+                <DetailField label="Units shipped" value={txn.units} />
+                {txn.picker && <DetailField label="Picker" value={txn.picker} />}
+                {src.shippedAt && <DetailField label="Shipped at" value={new Date(src.shippedAt).toLocaleString()} />}
+                {src.carrier?.name && <DetailField label="Carrier" value={src.carrier.name} />}
+                {src.carrier?.trackingNumber && <DetailField label="Tracking" value={src.carrier.trackingNumber} />}
+              </>
+            )}
+            {txn.type === 'invoice' && (
+              <>
+                {src.period && <DetailField label="Period" value={src.period} />}
+                {src.invoiceNumber && <DetailField label="Invoice #" value={src.invoiceNumber} />}
+                <DetailField label="Total" value={`$${Number(src.total || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`} />
+              </>
+            )}
+          </div>
+
+          {/* Type-specific detail body */}
+          {txn.type === 'receipt' && (
+            <div>
+              <h4 className="text-sm font-semibold text-white mb-2">Pallets received ({palletDocs.length})</h4>
+              {skuGroups.length === 0 ? (
+                <p className="text-xs text-gray-500 italic">No pallet records found in inventory for this receipt.</p>
+              ) : (
+                <div className="space-y-3">
+                  {skuGroups.map(g => (
+                    <div key={g.sku} className="bg-gray-800/40 border border-gray-800 rounded-lg overflow-hidden">
+                      <div className="px-3 py-1.5 bg-gray-800/60 text-xs">
+                        <span className="font-mono text-white font-semibold">{g.sku}</span>
+                        <span className="text-gray-400 ml-2">{g.description}</span>
+                        <span className="text-gray-500 ml-2">· {g.pallets.length} pallets</span>
+                      </div>
+                      <table className="w-full text-xs">
+                        <thead className="text-gray-400 uppercase">
+                          <tr>
+                            <th className="px-3 py-1 text-left">Pallet</th>
+                            <th className="px-3 py-1 text-right">Units</th>
+                            <th className="px-3 py-1 text-left">Location</th>
+                            <th className="px-3 py-1 text-left">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {g.pallets.map(p => (
+                            <tr key={p.id} className="border-t border-gray-800/50">
+                              <td className="px-3 py-1 font-mono text-white">{p.palletId || '-'}</td>
+                              <td className="px-3 py-1 text-right text-white">{Number(p.units || 0)}</td>
+                              <td className="px-3 py-1 text-gray-300">{p.location || '-'}</td>
+                              <td className="px-3 py-1 text-gray-400">{p.status || 'available'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {txn.type === 'order' && (
+            <div>
+              <h4 className="text-sm font-semibold text-white mb-2">Inventory allocations ({(src.inventoryAllocations || []).length})</h4>
+              {(src.inventoryAllocations || []).length === 0 ? (
+                <p className="text-xs text-gray-500 italic">No allocations recorded.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="text-gray-400 uppercase bg-gray-800/40">
+                      <tr>
+                        <th className="px-3 py-1.5 text-left">Pallet</th>
+                        <th className="px-3 py-1.5 text-left">SKU</th>
+                        <th className="px-3 py-1.5 text-right">Units allocated</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(src.inventoryAllocations || []).map((a, i) => (
+                        <tr key={i} className="border-t border-gray-800/50">
+                          <td className="px-3 py-1 font-mono text-white">{a.palletId || '-'}</td>
+                          <td className="px-3 py-1 font-mono text-gray-300">{a.sku}</td>
+                          <td className="px-3 py-1 text-right text-white font-medium">{a.unitsAllocated}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {txn.type === 'invoice' && (
+            <div>
+              <h4 className="text-sm font-semibold text-white mb-2">Line items ({(src.lineItems || []).length})</h4>
+              {(src.lineItems || []).length === 0 ? (
+                <p className="text-xs text-gray-500 italic">No line items.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead className="text-gray-400 uppercase bg-gray-800/40">
+                      <tr>
+                        <th className="px-3 py-1.5 text-left">Description</th>
+                        <th className="px-3 py-1.5 text-right">Qty</th>
+                        <th className="px-3 py-1.5 text-right">Rate</th>
+                        <th className="px-3 py-1.5 text-right">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(src.lineItems || []).map((li, i) => (
+                        <tr key={i} className="border-t border-gray-800/50">
+                          <td className="px-3 py-1 text-gray-300">{li.description || li.label || '-'}</td>
+                          <td className="px-3 py-1 text-right text-gray-300">{li.qty ?? li.quantity ?? ''}</td>
+                          <td className="px-3 py-1 text-right text-gray-300">{li.rate ? `$${Number(li.rate).toFixed(2)}` : ''}</td>
+                          <td className="px-3 py-1 text-right text-white">${Number(li.amount || 0).toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer with action buttons */}
+        <div className="px-5 py-3 border-t border-gray-800 flex justify-between items-center gap-2">
+          <div className="flex gap-2">
+            <button
+              onClick={() => exportTxnPDF(txn, inventory)}
+              className="bg-purple-600 hover:bg-purple-500 text-white text-sm px-3 py-1.5 rounded-lg flex items-center gap-1.5"
+            >
+              <FileText size={14} /> Export PDF
+            </button>
+            <button
+              onClick={() => exportTxnExcel(txn, inventory)}
+              className="bg-green-600 hover:bg-green-500 text-white text-sm px-3 py-1.5 rounded-lg flex items-center gap-1.5"
+            >
+              <Download size={14} /> Export Excel
+            </button>
+          </div>
+          <button onClick={onClose} className="text-sm text-gray-300 hover:text-white px-3 py-1.5">Close</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DetailField({ label, value }) {
+  return (
+    <div>
+      <div className="text-xs text-gray-500 mb-0.5">{label}</div>
+      <div className="text-sm text-white font-medium truncate">{value}</div>
+    </div>
   )
 }
