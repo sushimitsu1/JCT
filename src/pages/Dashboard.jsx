@@ -20,6 +20,8 @@ import ClientAccounts from './ClientAccounts'
 import StaffManagement from './StaffManagement'
 import Items from './Items'
 import Locations from './Locations'
+import DashboardHome from './DashboardHome'
+import GlobalSearch from '../components/GlobalSearch'
 
 const allNavItems = [
   { icon: LayoutDashboard, label: 'Dashboard',      id: 'dashboard' },
@@ -35,50 +37,6 @@ const allNavItems = [
   { icon: BarChart3,       label: 'Reports',         id: 'reports'   },
 ]
 
-function DashboardHome({ t }) {
-  const [stats, setStats] = useState({ clients: 0, pallets: 0, openOrders: 0, revenue: 0 })
-
-  useEffect(() => {
-    const fetchStats = async () => {
-      const [clients, inventory, orders, invoices] = await Promise.all([
-        getDocs(collection(db, 'clients')),
-        getDocs(collection(db, 'inventory')),
-        getDocs(collection(db, 'orders')),
-        getDocs(collection(db, 'invoices'))
-      ])
-      const openOrders = orders.docs.filter(d =>
-        d.data().status !== 'shipped' && d.data().status !== 'cancelled'
-      ).length
-      const revenue = invoices.docs.reduce((sum, d) => sum + Number(d.data().total || 0), 0)
-      setStats({ clients: clients.size, pallets: inventory.size, openOrders, revenue })
-    }
-    fetchStats()
-  }, [])
-
-  return (
-    <div className="p-6">
-      <div className="grid grid-cols-4 gap-4 mb-6">
-        {[
-          { label: 'Total Clients',  value: stats.clients },
-          { label: 'Active Pallets', value: stats.pallets },
-          { label: 'Open Orders',    value: stats.openOrders },
-          { label: 'Total Revenue',  value: `$${stats.revenue.toLocaleString()}` },
-        ].map((card) => (
-          <div key={card.label} style={{ background: t.cardBg, border: `1px solid ${t.cardBorder}` }} className="rounded-xl p-4">
-            <p style={{ color: t.textSubtle }} className="text-sm mb-1">{card.label}</p>
-            <p style={{ color: t.text }} className="text-2xl font-semibold">{card.value}</p>
-          </div>
-        ))}
-      </div>
-      <div style={{ background: t.cardBg, border: `1px solid ${t.cardBorder}` }} className="rounded-xl p-6">
-        <h3 style={{ color: t.text }} className="font-medium mb-1 text-base">Welcome to JCT WMS</h3>
-        <p style={{ color: t.textSubtle }} className="text-sm">
-          Your warehouse management system is live. Click any section in the sidebar to open it in a tab.
-        </p>
-      </div>
-    </div>
-  )
-}
 
 export default function Dashboard() {
   const { userRole, userName } = useAuth()
@@ -262,14 +220,6 @@ export default function Dashboard() {
           className="h-12 flex items-center px-4 justify-between flex-shrink-0"
         >
           <div className="flex items-center gap-3">
-            {/* Hamburger — mobile only */}
-            <button
-              onClick={() => setMobileMenuOpen(true)}
-              style={{ color: t.headerText }}
-              className="mobile-hamburger p-1 opacity-80 hover:opacity-100 items-center"
-            >
-              <Menu size={20} />
-            </button>
             {/* Title — desktop */}
             <span style={{ color: t.headerText }} className="text-sm font-medium opacity-70 desktop-sidebar">
               JCT Logistics Inc.
@@ -280,6 +230,10 @@ export default function Dashboard() {
             </span>
           </div>
 
+          {/* Global search */}
+          <div className="flex-1 flex justify-center px-4">
+            <GlobalSearch />
+          </div>
           {/* Theme switcher */}
           <div className="relative">
             <button
