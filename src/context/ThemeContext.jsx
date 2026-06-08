@@ -127,13 +127,13 @@ export const THEMES = {
 
 export function ThemeProvider({ children }) {
   const [themeId, setThemeId] = useState(() => {
-    return localStorage.getItem('jct-theme') || 'dark'
+    return 'slate'
   })
 
-  const theme = THEMES[themeId] || THEMES.dark
+  const theme = THEMES.slate
 
   const applyTheme = (id) => {
-  const t = THEMES[id] || THEMES.dark
+  const t = THEMES.slate
   const root = document.documentElement
   root.style.setProperty('--theme-bg', t.mainBg)
   root.style.setProperty('--theme-surface', t.cardBg)

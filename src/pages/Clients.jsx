@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react'
 import { collection, addDoc, getDocs, doc, deleteDoc, updateDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import { Plus, X, Pencil, Trash2, Phone, Mail, ChevronDown, ChevronUp } from 'lucide-react'
+import ServiceRatesEditor from '../components/ServiceRatesEditor'
+import RateCardGenerator from '../components/RateCardGenerator'
+import RateCardUploader from '../components/RateCardUploader'
 
 const emptyForm = {
   companyName: '', contactName: '', email: '', phone: '', startDate: '', notes: '',
@@ -40,10 +43,10 @@ const inp = 'w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-
 const inpSm = 'w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-500'
 const labelCls = 'text-gray-400 text-xs mb-1 block'
 
-const MODAL_TABS = ['basic', 'storage', 'fees', 'rates', 'gl', 'ratecard']
+const MODAL_TABS = ['basic', 'storage', 'gl', 'serviceRates']
 const MODAL_TAB_LABELS = {
   basic: 'Basic Info', storage: 'Storage', fees: 'Fees',
-  rates: 'Default Rates', gl: 'GL Accounts', ratecard: 'Rate Card',
+  rates: 'Default Rates', gl: 'GL Accounts', ratecard: 'Rate Card', serviceRates: 'Service Rates',
 }
 
 const modalStyle = { backgroundColor: '#0f172a', color: '#f1f5f9' }
@@ -58,6 +61,8 @@ export default function Clients() {
   const [search, setSearch] = useState('')
   const [expandedId, setExpandedId] = useState(null)
   const [modalTab, setModalTab] = useState('basic')
+  const [showRateGen, setShowRateGen] = useState(false)
+  const [showUploader, setShowUploader] = useState(false)
 
   const fetchClients = async () => {
     const snap = await getDocs(collection(db, 'clients'))
@@ -129,10 +134,20 @@ export default function Clients() {
           <h2 className="text-xl font-semibold text-white">Clients</h2>
           <p className="text-sm text-gray-500 mt-0.5">{clients.length} total clients</p>
         </div>
-        <button onClick={() => { setForm(emptyForm); setEditId(null); setModalTab('basic'); setShowModal(true) }}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
-          <Plus size={16} /> Add Client
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowUploader(true)}
+            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
+            <Plus size={16} /> Upload Signed Card
+          </button>
+          <button onClick={() => setShowRateGen(true)}
+            className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
+            <Plus size={16} /> Generate Rate Card
+          </button>
+          <button onClick={() => { setForm(emptyForm); setEditId(null); setModalTab('basic'); setShowModal(true) }}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors">
+            <Plus size={16} /> Add Client
+          </button>
+        </div>
       </div>
 
       {/* Search */}
@@ -479,6 +494,14 @@ export default function Clients() {
                   </button>
                 </div>
               )}
+              {modalTab === 'serviceRates' && editId && (
+                <ServiceRatesEditor clientId={editId} clientName={form.companyName} />
+              )}
+              {modalTab === 'serviceRates' && !editId && (
+                <div style={{ padding:'40px 20px', textAlign:'center', color:'#64748b', fontSize:13 }}>
+                  Save the client first (Basic Info tab), then come back to set service rates.
+                </div>
+              )}
 
             </div>
 
@@ -496,6 +519,8 @@ export default function Clients() {
           </div>
         </div>
       )}
+      {showRateGen && <RateCardGenerator onClose={() => setShowRateGen(false)} />}
+      {showUploader && <RateCardUploader clients={clients} onClose={() => setShowUploader(false)} onSaved={() => fetchClients()} />}
     </div>
   )
 }

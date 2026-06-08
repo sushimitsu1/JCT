@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { exportTxnPDF, exportTxnExcel } from '../lib/txnExports'
+import ReportItems from '../components/ReportItems'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line
@@ -68,10 +69,10 @@ const presets = [
 ]
 
 const TABS = [
-  { id: 'overview',     label: 'Overview',     icon: LayoutDashboard },
-  { id: 'operations',   label: 'Operations',   icon: Truck },
+  { id: 'management',   label: 'Management',   icon: LayoutDashboard },
   { id: 'transactions', label: 'Transactions', icon: Receipt },
-  { id: 'inventory',    label: 'Inventory',    icon: Boxes },
+  { id: 'items',        label: 'Items',        icon: Package },
+  { id: 'stock-status', label: 'Stock Status', icon: Boxes },
   { id: 'locations',    label: 'Locations',    icon: MapPin },
 ]
 
@@ -95,10 +96,10 @@ const tooltipStyle = {
 }
 
 export default function Reports() {
-  const [data, setData] = useState({ clients: [], inventory: [], orders: [], invoices: [], receipts: [], items: [], locations: [] })
+  const [data, setData] = useState({ clients: [], inventory: [], orders: [], invoices: [], receipts: [], items: [], locations: [], palletHistory: [] })
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [activeTab, setActiveTab] = useState('overview')
+  const [activeTab, setActiveTab] = useState('management')
 
   const [dateFrom, setDateFrom] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10)
@@ -118,7 +119,7 @@ export default function Reports() {
   const fetchAll = async () => {
     setRefreshing(true)
     try {
-      const [c, inv, ord, invoices, rec, items, locs] = await Promise.all([
+      const [c, inv, ord, invoices, rec, items, locs, ph] = await Promise.all([
         getDocs(collection(db, 'clients')),
         getDocs(collection(db, 'inventory')),
         getDocs(collection(db, 'orders')),
@@ -126,6 +127,7 @@ export default function Reports() {
         getDocs(collection(db, 'receipts')),
         getDocs(collection(db, 'items')),
         getDocs(collection(db, 'locations')),
+        getDocs(collection(db, 'palletHistory')).catch(() => ({ docs: [] })),
       ])
       setData({
         clients:   c.docs.map(d => ({ id: d.id, ...d.data() })),
@@ -135,6 +137,7 @@ export default function Reports() {
         receipts:  rec.docs.map(d => ({ id: d.id, ...d.data() })),
         items:     items.docs.map(d => ({ id: d.id, ...d.data() })),
         locations: locs.docs.map(d => ({ id: d.id, ...d.data() })),
+        palletHistory: (ph.docs || []).map(d => ({ id: d.id, ...d.data() })),
       })
     } catch (e) {
       console.error('Failed to load reports', e)
@@ -626,7 +629,7 @@ export default function Reports() {
       </div>
 
       {/* OVERVIEW */}
-      {activeTab === 'overview' && (
+      {activeTab === 'management' && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             <KPI icon={DollarSign}   label="Revenue (range)" value={`$${totalRevenue.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} color="text-green-400" />
@@ -646,24 +649,6 @@ export default function Reports() {
               <ChartPie data={ordersByStatus} empty={ordersByStatus.length === 0 && 'No orders in range'} />
             </Card>
           </div>
-        </div>
-      )}
-
-      {/* OPERATIONS */}
-      {activeTab === 'operations' && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <KPI icon={Package}      label="Receipts (range)" value={totalReceived}  color="text-purple-400" />
-            <KPI icon={ShoppingCart} label="Shipped (range)"  value={shippedOrders}  color="text-green-400" />
-            <KPI icon={ShoppingCart} label="Open orders"      value={openOrders}     color="text-yellow-400" />
-            <KPI icon={TrendingUp}   label="Net flow"         value={totalReceived - shippedOrders} color="text-blue-400" />
-          </div>
-          <Card title="Throughput — receipts vs shipments" subtitle="Daily volume in range"
-            onExport={() => exportSheet([['Date', 'Receipts', 'Shipments'], ...throughput.map(r => [r.date, r.receipts, r.shipments])], 'Throughput', 'JCT-Throughput.xlsx')}>
-            <ChartLine data={throughput} height={300}
-              lines={[{ key: 'receipts', name: 'Receipts', color: '#8b5cf6' }, { key: 'shipments', name: 'Shipments', color: '#10b981' }]}
-              empty={!throughput.some(d => d.receipts || d.shipments) && 'No activity in range'} />
-          </Card>
           <Card title="Top SKUs by velocity" subtitle="Units shipped in range"
             onExport={() => exportSheet(
               [['SKU', 'Description', 'Units Shipped', 'Orders', 'Pallets'], ...topSkus.map(r => [r.sku, r.description, r.unitsShipped, r.orderCount, r.palletCount])],
@@ -742,6 +727,18 @@ export default function Reports() {
             )}
           </Card>
         </div>
+      )}
+
+      {/* ITEMS */}
+      {activeTab === 'items' && (
+        <ReportItems
+          inventory={data.inventory}
+          receipts={data.receipts}
+          orders={data.orders}
+          items={data.items}
+          palletHistory={data.palletHistory || []}
+          clients={data.clients}
+        />
       )}
 
       {/* TRANSACTIONS */}
@@ -947,7 +944,7 @@ export default function Reports() {
       )}
 
       {/* INVENTORY */}
-      {activeTab === 'inventory' && (
+      {activeTab === 'stock-status' && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <KPI icon={Package}    label="Current pallets" value={totalPallets}                color="text-cyan-400" />

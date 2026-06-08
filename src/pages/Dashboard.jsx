@@ -6,7 +6,7 @@ import { db } from '../firebase'
 import {
   LayoutDashboard, Package, PackagePlus, ShoppingCart,
   DollarSign, Users, BarChart3, LogOut, KeyRound, UserCog,
-  Palette, Tag, X, Plus, Menu, MapPin, ChevronLeft, ChevronRight
+  Tag, X, Plus, Menu, MapPin, ChevronLeft, ChevronRight
 } from 'lucide-react'
 import { useAuth, ROLE_ACCESS } from '../context/AuthContext'
 import { useTheme, THEMES } from '../context/ThemeContext'
@@ -44,7 +44,6 @@ export default function Dashboard() {
   const allowedPages = ROLE_ACCESS[userRole] || ROLE_ACCESS.admin
   const navItems = allNavItems.filter(item => allowedPages.includes(item.id))
 
-  const [showThemePicker, setShowThemePicker] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('jct-sidebar-collapsed') === 'true')
   const toggleSidebar = () => { const v = !sidebarCollapsed; setSidebarCollapsed(v); localStorage.setItem('jct-sidebar-collapsed', String(v)) }
@@ -233,39 +232,6 @@ export default function Dashboard() {
           {/* Global search */}
           <div className="flex-1 flex justify-center px-4">
             <GlobalSearch />
-          </div>
-          {/* Theme switcher */}
-          <div className="relative">
-            <button
-              onClick={() => setShowThemePicker(!showThemePicker)}
-              style={{ color: t.headerText, opacity: 0.7 }}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg hover:opacity-100 transition-opacity"
-            >
-              <Palette size={14} />
-              <span className="hidden sm:inline">Theme</span>
-            </button>
-            {showThemePicker && (
-              <div
-                style={{ background: t.cardBg, border: `1px solid ${t.cardBorder}` }}
-                className="absolute right-0 top-10 rounded-xl shadow-lg z-50 p-2 w-44"
-              >
-                {Object.values(THEMES).map(th => (
-                  <button
-                    key={th.id}
-                    onClick={() => { switchTheme(th.id); setShowThemePicker(false) }}
-                    style={{
-                      background: themeId === th.id ? t.sidebarActiveBg : 'transparent',
-                      color: themeId === th.id ? t.sidebarActiveText : t.textMuted,
-                    }}
-                    className="w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 transition-colors"
-                  >
-                    <span>{th.emoji}</span>
-                    {th.label}
-                    {themeId === th.id && <span className="ml-auto text-xs">?</span>}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
         </div>
 
