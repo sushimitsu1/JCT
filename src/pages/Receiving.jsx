@@ -5,6 +5,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../firebase'
 import jsPDF from 'jspdf'
+import { generatePalletLabelsPDF } from '../lib/palletLabelsPDF'
 import {
   Plus, X, Package, ChevronDown, Search,
   ArrowLeft, Truck, DollarSign, FileText,
@@ -119,6 +120,24 @@ export default function Receiving() {
   const [showScanner, setShowScanner] = useState(false)
   const [scanTarget, setScanTarget] = useState(null)
 
+
+  const printPalletLabels = async (r) => {
+    if (!r) return
+    const { collection: fsColl, getDocs: fsGetDocs, query: fsQuery, where: fsWhere } = await import('firebase/firestore')
+    const invSnap = await fsGetDocs(fsQuery(fsColl(db, 'inventory'), fsWhere('receiptId', '==', r.id)))
+    const pallets = invSnap.docs.map(d => ({ id: d.id, ...d.data() })).map(p => ({
+      palletId: p.palletId,
+      sku: p.sku,
+      description: p.description || (catalogItems.find(it => it.clientId === p.clientId && it.sku === p.sku)?.description) || '',
+      clientName: p.clientName || r.clientName,
+      location: p.location,
+      units: p.units || p.quantity,
+      receivedDate: p.receivedDate || r.arrivalDate,
+      receiptId: r.transactionId || r.id.slice(-6).toUpperCase(),
+    }))
+    if (pallets.length === 0) { alert('No pallets found for this receipt yet.'); return }
+    await generatePalletLabelsPDF(pallets, `JCT-Labels-${r.transactionId || r.id.slice(-6)}.pdf`)
+  }
 
   const generateReceivingReport = async (r) => {
     if (!r) return
@@ -995,6 +1014,12 @@ export default function Receiving() {
                 className="flex items-center gap-1.5 text-sm bg-purple-600/20 hover:bg-purple-600/40 text-purple-400 border border-purple-600/20 px-3 py-2 rounded-lg transition-colors">
                 <FileText size={14} /> Print Report
               </button>
+              {(r.status === 'confirmed' || r.status === 'complete') && (
+                <button onClick={() => printPalletLabels(r)}
+                  className="flex items-center gap-1.5 text-sm bg-orange-600/20 hover:bg-orange-600/40 text-orange-400 border border-orange-600/20 px-3 py-2 rounded-lg transition-colors">
+                  <FileText size={14} /> Print Pallet Labels
+                </button>
+              )}
             {r.status === 'open' && (
               <button onClick={confirmReceipt}
                 className="flex items-center gap-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg">
