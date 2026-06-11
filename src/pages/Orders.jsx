@@ -165,7 +165,7 @@ export default function Orders() {
     setSkuDropdown(null)
   }
 
-  const addItem = () => setForm({ ...form, items: [...form.items, { sku: '', description: '', pieces: '', availableUnits: 0 }] })
+  const addItem = () => setForm({ ...form, items: [...form.items, { sku: '', description: '', pieces: '', availableUnits: 0, serviceType: 'ecom' }] })
   const removeItem = (i) => {
     setForm({ ...form, items: form.items.filter((_, idx) => idx !== i) })
     const s = { ...skuSearch }; delete s[i]; setSkuSearch(s)
@@ -299,7 +299,7 @@ export default function Orders() {
         }
       }
       const client = clients.find(c => c.id === order.clientId)
-      if (client?.email) await sendShipmentEmail(order, client.email)
+      // Auto-shipment email DISABLED — emails/invoices go out from Billing module instead
     }
     const statusFields = { status: newStatus }
     if (newStatus === 'picking') { statusFields.pickingStartedAt = new Date().toISOString() }
@@ -591,8 +591,8 @@ const revertOrder = async (order) => {
             ) : (
               <div>
                 <div className="grid grid-cols-12 gap-3 px-2 pb-2 text-gray-500 text-xs border-b border-gray-800 mb-2">
-                  <div className="col-span-3">SKU</div><div className="col-span-4">Description</div>
-                  <div className="col-span-2">Pieces *</div><div className="col-span-2">Cartons (auto)</div><div className="col-span-1">Avail.</div>
+                  <div className="col-span-3">SKU</div><div className="col-span-3">Description</div><div className="col-span-2">Service</div>
+                  <div className="col-span-2">Pieces *</div><div className="col-span-1">Cartons</div><div className="col-span-1">Avail.</div>
                 </div>
                 {form.items.map((item, i) => {
                   const liveAvail = item.sku ? (availableSkusFor(form.clientId, i).find(s => s.sku === item.sku)?.totalUnits || 0) : 0
@@ -627,10 +627,16 @@ const revertOrder = async (order) => {
                         )}
                       </div>
                       <input value={item.description} onChange={e => updateItem(i, 'description', e.target.value)}
-                        className="col-span-4 bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" placeholder="Description" />
+                        className="col-span-3 bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500" placeholder="Description" />
+                      <select value={item.serviceType || 'ecom'} onChange={e => updateItem(i, 'serviceType', e.target.value)}
+                        className="col-span-2 bg-gray-800 border border-gray-700 text-white rounded-lg px-2 py-2 text-sm focus:outline-none focus:border-blue-500">
+                        <option value="ecom">E-comm</option>
+                        <option value="case">Case Pick</option>
+                        <option value="pallet">Pallet Pick</option>
+                      </select>
                       <input type="number" value={item.pieces} onChange={e => updateItem(i, 'pieces', e.target.value)}
                         className={`col-span-2 bg-gray-800 border rounded-lg px-3 py-2 text-sm focus:outline-none ${over ? 'border-red-500 text-red-400' : 'border-gray-700 text-white focus:border-blue-500'}`} placeholder="e.g. 500" />
-                      <div className="col-span-2 bg-gray-800/50 border border-gray-700/50 rounded-lg px-3 py-2 text-sm text-gray-400">
+                      <div className="col-span-1 bg-gray-800/50 border border-gray-700/50 rounded-lg px-3 py-2 text-sm text-gray-400">
                         {cartons} {ppc > 0 && <span className="text-xs text-gray-600">({ppc}/ctn)</span>}
                       </div>
                       <div className="col-span-1 flex items-center justify-between">
@@ -753,12 +759,18 @@ const revertOrder = async (order) => {
                 <Pencil size={14} /> Edit Order
               </button>
             )}
-            {(order.status === 'pending' || order.status === 'open') && (
-              <button onClick={() => deleteOrder(order)} disabled={loading}
+            <button onClick={async () => {
+                const isActive = order.status && order.status !== 'pending' && order.status !== 'open'
+                if (isActive) {
+                  if (!window.confirm(`DELETE this ${order.status.toUpperCase()} order? This will not auto-restore inventory allocations. Continue?`)) return
+                  const final = window.prompt('Type DELETE to confirm:')
+                  if (final !== 'DELETE') return
+                }
+                deleteOrder(order)
+              }} disabled={loading}
                 className="text-xs bg-red-600/20 hover:bg-red-600/40 text-red-400 border border-red-500/20 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
                 <X size={11}/> Delete Order
               </button>
-            )}
             {(order.status === 'shipped' || order.status === 'cancelled') && (
               <button onClick={() => revertOrder(order)} disabled={loading}
                 className="flex items-center gap-1.5 text-sm bg-yellow-600/20 hover:bg-yellow-600/40 text-yellow-400 border border-yellow-600/20 px-3 py-2 rounded-lg transition-colors disabled:opacity-50">

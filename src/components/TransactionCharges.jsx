@@ -22,13 +22,42 @@ export default function TransactionCharges({
   quantities,        // { pallets, units, orders, cartons } — actual quantities from the transaction
   readOnly,          // bool — if true, no editing
   clientName,
+  receiptType,         // 'fcl_loose' | 'fcl_palletized' | 'lcl' | 'parcel' | undefined
+  containerSize,       // '20GP' | '40GP' | '40HQ' | '45GP'
+  parcelWeightClass,   // 'under50' | 'over50'
 }) {
   const [showPresets, setShowPresets] = useState(false)
 
   // ── Auto-calculate from rate card ────────────────────────────────
+  // Whitelist of rateCard sourceKey values to APPLY for each receipt type.
+  const allowedSourceKeysForReceipt = (rt) => {
+    switch (rt) {
+      case 'fcl_loose':
+        return [
+          containerSize === '20GP' ? 'fcl20GP' : null,
+          containerSize === '40GP' ? 'fcl40GP' : null,
+          containerSize === '40HQ' ? 'fcl40HQ' : null,
+          containerSize === '45GP' ? 'fcl45GP' : null,
+          'palletizingFee',
+        ].filter(Boolean)
+      case 'fcl_palletized':
+        return ['palletizingFee']
+      case 'lcl':
+        return ['lclReceiving', 'palletizingFee']
+      case 'parcel':
+        return [parcelWeightClass === 'over50' ? 'looseCartonOver50' : 'looseCartonUnder50']
+      default:
+        return null
+    }
+  }
+
   const loadFromRateCard = () => {
     if (!rateCard?.length) return
-    const applicable = rateCard.filter(r => r.trigger === trigger || r.trigger === 'both')
+    let applicable = rateCard.filter(r => r.trigger === trigger || r.trigger === 'both')
+    if (trigger === 'on_receive' && receiptType) {
+      const allow = allowedSourceKeysForReceipt(receiptType)
+      if (allow) applicable = applicable.filter(r => allow.includes(r.sourceKey))
+    }
     const calculated = applicable.map(r => {
       const qty = calcQty(r.unit, quantities)
       const amount = Number((qty * Number(r.rate || 0)).toFixed(2))

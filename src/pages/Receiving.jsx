@@ -100,6 +100,7 @@ export default function Receiving() {
 
   const [form, setForm] = useState({
     clientId: '', clientName: '', referenceId: '', poNumber: '',
+    receiptType: 'lcl', containerSize: '40HQ', parcelWeightClass: 'under50',
     arrivalDate: new Date().toISOString().slice(0,16),
     expectedDate: '', notes: '',
     carrier: '', trackingNumber: '', bolNumber: '',
@@ -388,6 +389,7 @@ export default function Receiving() {
 
   const resetForm = () => setForm({
     clientId: '', clientName: '', referenceId: '', poNumber: '',
+    receiptType: 'lcl', containerSize: '40HQ', parcelWeightClass: 'under50',
     arrivalDate: new Date().toISOString().slice(0,16),
     expectedDate: '', notes: '', carrier: '', trackingNumber: '',
     bolNumber: '', truckNumber: '', sealNumber: '', driverName: '',
@@ -666,6 +668,43 @@ export default function Receiving() {
         {activeTab === 'transport' && (
           <div className="space-y-4">
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+              <h3 className="text-white font-medium mb-4">Receipt Type</h3>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className={labelCls}>Type *</label>
+                  <select value={form.receiptType} onChange={e => setForm({ ...form, receiptType: e.target.value })} className={inputCls}>
+                    <option value="fcl_loose">FCL — Loose-in (loose cartons in container)</option>
+                    <option value="fcl_palletized">FCL — Palletized (pre-palletized)</option>
+                    <option value="lcl">LCL — Palletized</option>
+                    <option value="parcel">Parcel / Loose Cartons</option>
+                  </select>
+                </div>
+                {(form.receiptType === 'fcl_loose' || form.receiptType === 'fcl_palletized') && (
+                  <div>
+                    <label className={labelCls}>Container Size</label>
+                    <select value={form.containerSize} onChange={e => setForm({ ...form, containerSize: e.target.value })} className={inputCls}>
+                      <option value="20GP">20GP</option>
+                      <option value="40GP">40GP</option>
+                      <option value="40HQ">40HQ</option>
+                      <option value="45GP">45GP</option>
+                    </select>
+                  </div>
+                )}
+                {form.receiptType === 'parcel' && (
+                  <div>
+                    <label className={labelCls}>Carton Weight Class</label>
+                    <select value={form.parcelWeightClass} onChange={e => setForm({ ...form, parcelWeightClass: e.target.value })} className={inputCls}>
+                      <option value="under50">Under 50 lbs/ctn</option>
+                      <option value="over50">50 lbs/ctn or heavier</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Receipt type determines which charges auto-apply from the rate card.
+              </p>
+            </div>
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
               <h3 className="text-white font-medium mb-4">Order Information</h3>
               <div className="grid grid-cols-3 gap-4">
                 <div>
@@ -882,8 +921,11 @@ export default function Receiving() {
               onChargesChange={newCharges => setForm({ ...form, charges: newCharges })}
               rateCard={clients.find(c => c.id === form.clientId)?.rateCard || []}
               trigger="on_receive"
+              receiptType={form.receiptType}
+              containerSize={form.containerSize}
+              parcelWeightClass={form.parcelWeightClass}
               quantities={{
-                pallets: form.lineItems.reduce((s, i) => s + Number(i.quantity || 0), 0),
+                pallets: form.lineItems.reduce((s, i) => s + ((i.pallets || []).length), 0),
                 units: form.lineItems.reduce((s, i) => s + Number(i.quantity || 0), 0),
                 cartons: 0,
                 orders: 1,
@@ -1000,16 +1042,32 @@ export default function Receiving() {
             </span>
           </div>
           <div className="flex gap-2">
-            {(!r.status || r.status === 'open') && (
-              <button onClick={async () => {
-                if (!window.confirm('Delete this receipt? This cannot be undone.')) return
-                const { deleteDoc, doc: fsDoc } = await import('firebase/firestore')
-                await deleteDoc(fsDoc(db, 'receipts', r.id))
-                setView('list'); setSelectedReceipt(null); fetchData()
+            <button onClick={async () => {
+                const msg = r.status === 'open' || !r.status
+                  ? 'Delete this receipt? This cannot be undone.'
+                  : `DELETE this ${r.status.toUpperCase()} receipt? This will also remove ${r.totalPallets || 'all'} inventory pallets and their history. This cannot be undone.`
+                if (!window.confirm(msg)) return
+                if (r.status !== 'open' && !window.confirm('Are you absolutely sure? Type confirm in the next prompt to proceed.')) return
+                if (r.status !== 'open') {
+                  const final = window.prompt('Type DELETE to confirm:')
+                  if (final !== 'DELETE') return
+                }
+                try {
+                  const { deleteDoc, doc: fsDoc, collection: fsColl, query: fsQuery, where: fsWhere, getDocs: fsGetDocs, writeBatch } = await import('firebase/firestore')
+                  const batch = writeBatch(db)
+                  const invSnap = await fsGetDocs(fsQuery(fsColl(db, 'inventory'), fsWhere('receiptId', '==', r.id)))
+                  invSnap.docs.forEach(d => batch.delete(d.ref))
+                  const histSnap = await fsGetDocs(fsQuery(fsColl(db, 'palletHistory'), fsWhere('receiptId', '==', r.id)))
+                  histSnap.docs.forEach(d => batch.delete(d.ref))
+                  batch.delete(fsDoc(db, 'receipts', r.id))
+                  await batch.commit()
+                  setView('list'); setSelectedReceipt(null); fetchData()
+                } catch (e) {
+                  alert('Delete failed: ' + e.message)
+                }
               }} className="flex items-center gap-1.5 text-sm bg-red-600/20 hover:bg-red-600/40 text-red-400 border border-red-500/20 px-3 py-2 rounded-lg">
                 <X size={14}/> Delete Receipt
               </button>
-            )}
               <button onClick={() => generateReceivingReport(r)}
                 className="flex items-center gap-1.5 text-sm bg-purple-600/20 hover:bg-purple-600/40 text-purple-400 border border-purple-600/20 px-3 py-2 rounded-lg transition-colors">
                 <FileText size={14} /> Print Report
@@ -1256,8 +1314,11 @@ export default function Receiving() {
               }}
               rateCard={clients.find(c => c.id === r.clientId)?.rateCard || []}
               trigger="on_receive"
+              receiptType={form.receiptType}
+              containerSize={form.containerSize}
+              parcelWeightClass={form.parcelWeightClass}
               quantities={{
-                pallets: (r.lineItems || []).reduce((s, i) => s + Number(i.quantity || 0), 0),
+                pallets: (r.lineItems || []).reduce((s, i) => s + ((i.pallets || []).length), 0),
                 units: (r.lineItems || []).reduce((s, i) => s + Number(i.quantity || 0), 0),
                 cartons: 0,
                 orders: 1,
