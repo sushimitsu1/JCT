@@ -1,65 +1,178 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ═══════════════════════════════════════════════════════════════
+   LINEAR SKY THEME — dark by default, light via .theme-sky-light
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  --c-white:    255 255 255;
+  --c-gray-50:  250 250 250;
+  --c-gray-100: 244 244 245;
+  --c-gray-200: 228 228 231;
+  --c-gray-300: 212 212 216;
+  --c-gray-400: 161 161 170;
+  --c-gray-500: 113 113 122;
+  --c-gray-600: 82  82  91;
+  --c-gray-700: 63  63  70;
+  --c-gray-800: 39  39  42;
+  --c-gray-900: 24  24  27;
+  --c-gray-950: 9   9   11;
+
+  --c-blue-50:  240 249 255;
+  --c-blue-100: 224 242 254;
+  --c-blue-200: 186 230 253;
+  --c-blue-300: 125 211 252;
+  --c-blue-400: 56  189 248;
+  --c-blue-500: 14  165 233;
+  --c-blue-600: 2   132 199;
+  --c-blue-700: 3   105 161;
+  --c-blue-800: 7   89  133;
+  --c-blue-900: 12  74  110;
+
+  --theme-bg: #09090B;
+  --theme-surface: #18181B;
+  --theme-border: #27272A;
+  --theme-text: #FAFAFA;
+  --theme-muted: #A1A1AA;
+  --theme-subtle: #71717A;
+  --theme-input-bg: #27272A;
+  --theme-input-border: #3F3F46;
+  --theme-sidebar: #18181B;
+  --theme-sidebar-border: #27272A;
+
+  /* Login illustration palette — dark mode */
+  --illus-bg:               #082F49;
+  --illus-pattern:          #38BDF8;
+  --illus-silhouette:       #0C4A6E;
+  --illus-container-dark:   #0C4A6E;
+  --illus-container-mid:    #0EA5E9;
+  --illus-container-bright: #38BDF8;
+  --illus-ridge:            #082F49;
+  --illus-ridge-mid:        #075985;
+  --illus-label:            #BAE6FD;
+  --illus-label-dark:       #082F49;
+  --illus-ground:           #020617;
+  --illus-ground-stripe:    #1E293B;
+  --illus-ground-dash:      #7DD3FC;
+  --illus-truck-cab:        #1E293B;
+  --illus-truck-window:     #7DD3FC;
+  --illus-truck-body:       #38BDF8;
+  --illus-truck-logo-mark:  #0EA5E9;
+  --illus-truck-logo-text:  #082F49;
+  --illus-wheel-fill:       #0F172A;
+  --illus-wheel-stroke:     #475569;
+}
+
+html.theme-sky-light {
+  --c-white:    24  24  27;
+  --c-gray-50:  9   9   11;
+  --c-gray-100: 24  24  27;
+  --c-gray-200: 39  39  42;
+  --c-gray-300: 63  63  70;
+  --c-gray-400: 82  82  91;
+  --c-gray-500: 113 113 122;
+  --c-gray-600: 161 161 170;
+  --c-gray-700: 212 212 216;
+  --c-gray-800: 228 228 231;
+  --c-gray-900: 244 244 245;
+  --c-gray-950: 250 250 250;
+
+  --c-blue-300: 56  189 248;
+  --c-blue-400: 14  165 233;
+  --c-blue-500: 2   132 199;
+  --c-blue-600: 3   105 161;
+  --c-blue-700: 7   89  133;
+
+  --theme-bg: #FAFAFA;
+  --theme-surface: #FFFFFF;
+  --theme-border: #E4E4E7;
+  --theme-text: #18181B;
+  --theme-muted: #52525B;
+  --theme-subtle: #71717A;
+  --theme-input-bg: #FFFFFF;
+  --theme-input-border: #D4D4D8;
+  --theme-sidebar: #FFFFFF;
+  --theme-sidebar-border: #E4E4E7;
+
+  /* Login illustration palette — light mode */
+  --illus-bg:               #E0F2FE;
+  --illus-pattern:          #7DD3FC;
+  --illus-silhouette:       #BAE6FD;
+  --illus-container-dark:   #075985;
+  --illus-container-mid:    #0EA5E9;
+  --illus-container-bright: #0284C7;
+  --illus-ridge:            #0C4A6E;
+  --illus-ridge-mid:        #075985;
+  --illus-label:            #BAE6FD;
+  --illus-label-dark:       #075985;
+  --illus-ground:           #0C4A6E;
+  --illus-ground-stripe:    #075985;
+  --illus-ground-dash:      #7DD3FC;
+  --illus-truck-cab:        #0F172A;
+  --illus-truck-window:     #7DD3FC;
+  --illus-truck-body:       #38BDF8;
+  --illus-truck-logo-mark:  #0EA5E9;
+  --illus-truck-logo-text:  #075985;
+  --illus-wheel-fill:       #0F172A;
+  --illus-wheel-stroke:     #475569;
+}
+
+/* Status colors that need darker shades in light mode */
+html.theme-sky-light .text-yellow-400 { color: #A16207 !important; }
+html.theme-sky-light .text-red-400    { color: #B91C1C !important; }
+html.theme-sky-light .text-green-400  { color: #15803D !important; }
+html.theme-sky-light .text-amber-400  { color: #B45309 !important; }
+html.theme-sky-light .text-orange-400 { color: #C2410C !important; }
+html.theme-sky-light .text-purple-400 { color: #7E22CE !important; }
+html.theme-sky-light .text-purple-300 { color: #6B21A8 !important; }
+html.theme-sky-light .text-teal-400   { color: #0F766E !important; }
+html.theme-sky-light .text-teal-300   { color: #115E59 !important; }
+html.theme-sky-light .text-indigo-400 { color: #4338CA !important; }
+html.theme-sky-light .text-pink-400   { color: #BE185D !important; }
+
+/* ─── Login illustration: SVG color classes ─────────────────── */
+.illus-bg               { fill: var(--illus-bg); }
+.illus-pattern          { fill: var(--illus-pattern); }
+.illus-silhouette       { fill: var(--illus-silhouette); }
+.illus-container-dark   { fill: var(--illus-container-dark); }
+.illus-container-mid    { fill: var(--illus-container-mid); }
+.illus-container-bright { fill: var(--illus-container-bright); }
+.illus-ridge            { stroke: var(--illus-ridge); stroke-width: 0.8; }
+.illus-ridge-strong     { stroke: var(--illus-ridge); stroke-width: 1.5; }
+.illus-ridge-mid        { stroke: var(--illus-ridge-mid); stroke-width: 0.8; }
+.illus-ridge-mid-strong { stroke: var(--illus-ridge-mid); stroke-width: 1.5; }
+.illus-label            { fill: var(--illus-label); font-family: 'Geist Mono', monospace; }
+.illus-label-dark       { fill: var(--illus-label-dark); font-family: 'Geist Mono', monospace; }
+.illus-ground           { fill: var(--illus-ground); }
+.illus-ground-stripe    { stroke: var(--illus-ground-stripe); stroke-width: 2; }
+.illus-ground-dash      { fill: var(--illus-ground-dash); }
+.illus-truck-cab        { fill: var(--illus-truck-cab); }
+.illus-truck-window     { fill: var(--illus-truck-window); opacity: 0.85; }
+.illus-truck-body       { fill: var(--illus-truck-body); stroke: var(--illus-ridge); stroke-width: 0.5; }
+.illus-truck-logo-mark  { fill: var(--illus-truck-logo-mark); }
+.illus-truck-logo-text  { fill: var(--illus-truck-logo-text); font-family: 'Geist', sans-serif; }
+.illus-wheel            { fill: var(--illus-wheel-fill); stroke: var(--illus-wheel-stroke); stroke-width: 2; }
+
+/* ─── Base typography (Geist) ──────────────────────────────── */
 *, *::before, *::after {
-  font-family: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif !important;
+  font-family: 'Geist', 'Inter', 'Segoe UI', system-ui, sans-serif !important;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   box-sizing: border-box;
 }
 code, .font-mono, [class*="font-mono"] {
-  font-family: 'IBM Plex Mono', 'Courier New', monospace !important;
+  font-family: 'Geist Mono', 'IBM Plex Mono', 'Courier New', monospace !important;
 }
 
-body {
-  font-size: 14.5px;
+html, body {
+  background: var(--theme-bg);
+  color: var(--theme-text);
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
-table {
-  font-size: 13.5px;
-  letter-spacing: -0.005em;
-}
-th {
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  font-size: 11.5px;
-}
-h1, h2, h3, h4 {
-  letter-spacing: -0.02em;
-  font-weight: 600;
-}
-
-/* Brighter muted text � dark themes */
-.text-gray-500 { color: #94a3b8 !important; }
-.text-gray-400 { color: #cbd5e1 !important; }
-.text-gray-600 { color: #94a3b8 !important; }
-
-/* Make table zebra striping subtle on slate (was rendering near-white) */
-.bg-gray-800\/10  { background-color: rgba(148, 163, 184, 0.04) !important; }
-.bg-gray-800\/20  { background-color: rgba(148, 163, 184, 0.06) !important; }
-.bg-gray-800\/30  { background-color: rgba(148, 163, 184, 0.08) !important; }
-.bg-gray-800\/40  { background-color: rgba(148, 163, 184, 0.10) !important; }
-.bg-gray-800\/60  { background-color: rgba(148, 163, 184, 0.14) !important; }
-
-/* Theme-aware surfaces (kept from before) */
-.bg-gray-900  { background-color: var(--theme-surface) !important; }
-.bg-gray-950  { background-color: var(--theme-bg) !important; }
-.bg-gray-800  { background-color: var(--theme-surface) !important; }
-.border-gray-800 { border-color: var(--theme-border) !important; }
-.border-gray-700 { border-color: var(--theme-border) !important; }
-
-/* Light theme overrides (brand/warm) */
-.theme-brand .text-white,
-.theme-warm  .text-white  { color: #1B2A4A !important; }
-.theme-brand .text-gray-300,
-.theme-warm  .text-gray-300 { color: #374151 !important; }
-.theme-brand .text-gray-400,
-.theme-warm  .text-gray-400 { color: #4B5563 !important; }
-.theme-brand .text-gray-500,
-.theme-warm  .text-gray-500 { color: #6B7280 !important; }
-.theme-brand .text-gray-600,
-.theme-warm  .text-gray-600 { color: #6B7280 !important; }
-.theme-brand .bg-gray-800\/20,
-.theme-brand .bg-gray-800\/10,
-.theme-warm  .bg-gray-800\/20,
-.theme-warm  .bg-gray-800\/10 { background-color: #F3F4F6 !important; }
+body  { font-size: 15px; }
+table { font-size: 14px; letter-spacing: -0.005em; }
+th    { font-weight: 600; letter-spacing: 0.04em; font-size: 12px; }
+h1, h2, h3, h4 { letter-spacing: -0.02em; font-weight: 600; }

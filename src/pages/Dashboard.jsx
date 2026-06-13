@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { useAuth, ROLE_ACCESS } from '../context/AuthContext'
 import { useTheme, THEMES } from '../context/ThemeContext'
+import ThemeToggle from '../components/ThemeToggle'
 import Clients from './Clients'
 import Receiving from './Receiving'
 import Inventory from './Inventory'
@@ -124,6 +125,9 @@ export default function Dashboard() {
                 <X size={20} />
               </button>
             </div>
+            <div className="px-3 pt-3">
+              <GlobalSearch />
+            </div>
             <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
               {navItems.map((item) => (
                 <button
@@ -140,7 +144,8 @@ export default function Dashboard() {
                 </button>
               ))}
             </nav>
-            <div style={{ borderTop: `1px solid ${t.sidebarBorder}` }} className="px-3 py-4">
+            <div style={{ borderTop: `1px solid ${t.sidebarBorder}` }} className="px-3 py-4 space-y-1">
+              <ThemeToggle />
               <button
                 onClick={() => signOut(auth)}
                 style={{ color: t.sidebarText }}
@@ -176,6 +181,11 @@ export default function Dashboard() {
             </>
           )}
         </div>
+        {!sidebarCollapsed && (
+          <div className="px-3 pt-3">
+            <GlobalSearch />
+          </div>
+        )}
         <nav className="flex-1 px-2 py-4 space-y-0.5 overflow-y-auto overflow-x-hidden">
           {navItems.map((item) => (
             <button
@@ -195,7 +205,8 @@ export default function Dashboard() {
             </button>
           ))}
         </nav>
-        <div style={{ borderTop: `1px solid ${t.sidebarBorder}` }} className="px-2 py-4">
+        <div style={{ borderTop: `1px solid ${t.sidebarBorder}` }} className="px-2 py-4 space-y-1">
+          <ThemeToggle collapsed={sidebarCollapsed} />
           <button
             onClick={() => signOut(auth)}
             title={sidebarCollapsed ? 'Sign out' : ''}
@@ -219,23 +230,18 @@ export default function Dashboard() {
           className="h-12 flex items-center px-4 justify-between flex-shrink-0"
         >
           <div className="flex items-center gap-3">
-            {/* Title — desktop */}
+            {/* Title â€” desktop */}
             <span style={{ color: t.headerText }} className="text-sm font-medium opacity-70 desktop-sidebar">
               JCT Logistics Inc.
             </span>
-            {/* Active page label — mobile */}
+            {/* Active page label â€” mobile */}
             <span style={{ color: t.headerText }} className="text-sm font-semibold mobile-page-title">
               {activeTab?.label}
             </span>
           </div>
-
-          {/* Global search */}
-          <div className="flex-1 flex justify-center px-4">
-            <GlobalSearch />
-          </div>
         </div>
 
-        {/* Global Tab Bar — horizontally scrollable */}
+        {/* Global Tab Bar â€” horizontally scrollable */}
         <div
           style={{ background: t.sidebar, borderBottom: `1px solid ${t.sidebarBorder}` }}
           className="flex items-center overflow-x-auto flex-shrink-0 scrollbar-hide"
