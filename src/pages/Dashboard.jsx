@@ -5,7 +5,7 @@ import { collection, getDocs } from 'firebase/firestore'
 import { db } from '../firebase'
 import {
   LayoutDashboard, Package, PackagePlus, ShoppingCart,
-  DollarSign, Users, BarChart3, LogOut, KeyRound, UserCog,
+  DollarSign, Users, BarChart3, LogOut, KeyRound, UserCog, Settings as SettingsIcon,
   Tag, X, Plus, Menu, MapPin, ChevronLeft, ChevronRight
 } from 'lucide-react'
 import { useAuth, ROLE_ACCESS } from '../context/AuthContext'
@@ -22,6 +22,7 @@ import StaffManagement from './StaffManagement'
 import Items from './Items'
 import Locations from './Locations'
 import DashboardHome from './DashboardHome'
+import Settings from './Settings'
 import GlobalSearch from '../components/GlobalSearch'
 
 const allNavItems = [
@@ -36,6 +37,7 @@ const allNavItems = [
   { icon: KeyRound,        label: 'Client Accounts', id: 'accounts'  },
   { icon: UserCog,         label: 'Staff',           id: 'staff'     },
   { icon: BarChart3,       label: 'Reports',         id: 'reports'   },
+  { icon: SettingsIcon,    label: 'Settings',        id: 'settings'  },
 ]
 
 
@@ -101,6 +103,7 @@ export default function Dashboard() {
       case 'locations': return <Locations />
       case 'staff':     return <StaffManagement />
       case 'reports':   return <Reports />
+      case 'settings':  return <Settings />
       default:          return null
     }
   }

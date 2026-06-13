@@ -7,6 +7,13 @@ import { Plus, X, Trash2, Users, CheckCircle, Shield } from 'lucide-react'
 
 const ROLES = [
   {
+    id: 'manager',
+    label: 'Manager',
+    description: 'Full access — same as admin',
+    color: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+    access: ['All pages']
+  },
+  {
     id: 'staff',
     label: 'Warehouse Staff',
     description: 'Can access Receiving and Inventory only',
@@ -101,7 +108,7 @@ export default function StaffManagement() {
       )}
 
       {/* Role legend */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {ROLES.map(role => (
           <div key={role.id} className="bg-gray-900 border border-gray-800 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-2">

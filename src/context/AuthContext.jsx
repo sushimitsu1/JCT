@@ -1,4 +1,4 @@
-﻿import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import { onAuthStateChanged } from 'firebase/auth'
 import { doc, getDoc } from 'firebase/firestore'
 import { auth, db } from '../firebase'
@@ -7,10 +7,11 @@ const AuthContext = createContext()
 
 // Define which pages each role can access
 export const ROLE_ACCESS = {
-  admin:      ['dashboard', 'items', 'receiving', 'inventory', 'locations', 'orders', 'billing', 'clients', 'accounts', 'staff', 'reports'],
+  admin:      ['dashboard', 'items', 'receiving', 'inventory', 'locations', 'orders', 'billing', 'clients', 'accounts', 'staff', 'reports', 'settings'],
+  manager:    ['dashboard', 'items', 'receiving', 'inventory', 'locations', 'orders', 'billing', 'clients', 'accounts', 'staff', 'reports', 'settings'],
   staff:      ['items', 'receiving', 'inventory', 'locations', 'orders'],
-  supervisor: ['dashboard', 'items', 'receiving', 'inventory', 'locations', 'orders', 'reports'],
-  billing:    ['billing', 'clients', 'reports'],
+  supervisor: ['dashboard', 'items', 'receiving', 'inventory', 'locations', 'orders', 'reports', 'settings'],
+  billing:    ['billing', 'clients', 'reports', 'settings'],
   client:     []
 }
 

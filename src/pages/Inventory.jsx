@@ -310,9 +310,6 @@ export default function Inventory() {
                         <input value={filters.sku} onChange={e => setFilters({ ...filters, sku: e.target.value })}
                           className="flex-1 bg-transparent text-white text-xs px-2 py-1.5 focus:outline-none" placeholder="SKU..." />
                       </div>
-                      <button onClick={() => setShowScanner(true)} className="text-blue-400 hover:text-blue-300 p-1.5 bg-gray-800 rounded-lg border border-gray-700" title="Scan barcode">
-                        📷
-                      </button>
                     </div>
                   </div>
                   <div>
@@ -432,12 +429,6 @@ export default function Inventory() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowScanner(true)}
-                className="flex items-center gap-2 text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white px-3 py-2 rounded-lg transition-colors"
-              >
-                📷 Scan
-              </button>
               <button
                 onClick={handleRefresh}
                 disabled={refreshing}

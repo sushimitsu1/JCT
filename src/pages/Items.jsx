@@ -170,7 +170,7 @@ export default function Items() {
               <tr>
                 <td colSpan={8} className="text-center py-12">
                   <Package size={32} className="text-gray-700 mx-auto mb-3" />
-                  <p className="text-gray-500 text-sm">No SKUs yet — click Add SKU to create your first item</p>
+                  <p className="text-gray-500 text-sm">No SKUs yet ï¿½ click Add SKU to create your first item</p>
                 </td>
               </tr>
             ) : filtered.map((item, i) => (
@@ -183,21 +183,21 @@ export default function Items() {
                 <td className="px-4 py-3 text-gray-300 text-sm">{item.clientName}</td>
                 <td className="px-4 py-3 text-gray-400 text-xs">
                   {item.length && item.width && item.height
-                    ? `${item.length}"×${item.width}"×${item.height}"`
-                    : '—'}
-                  {item.weight ? <span className="ml-1 text-gray-500">{item.weight}lb</span> : ''}
+                    ? `${item.length}"Ã—${item.width}"Ã—${item.height}"`
+                    : 'â€”'}
+                  {item.weight ? <span className="ml-1 text-gray-500"> Â· {item.weight}lb</span> : ''}
                 </td>
-                <td className="px-4 py-3 text-gray-300 text-sm">{item.unitsPerPallet || '—'}</td>
+                <td className="px-4 py-3 text-gray-300 text-sm">{item.unitsPerPallet || 'ï¿½'}</td>
                 <td className="px-4 py-3">
                   {item.storageRate ? (
                     <div>
                       <span className="text-white font-medium">${item.storageRate}</span>
                       <span className="text-gray-500 text-xs ml-1">/ {getRateLabel(item.storageRateType)}</span>
                     </div>
-                  ) : '—'}
+                  ) : 'â€”'}
                 </td>
                 <td className="px-4 py-3 text-gray-300 text-sm">
-                  {item.minMonthlyCharge ? `$${item.minMonthlyCharge}` : '—'}
+                  {item.minMonthlyCharge ? `$${item.minMonthlyCharge}` : 'â€”'}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2 justify-end">
@@ -258,7 +258,7 @@ export default function Items() {
                     value={form.description}
                     onChange={e => setForm({ ...form, description: e.target.value })}
                     className="w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-blue-500"
-                    placeholder="CAL KING (72×84×15)"
+                    placeholder="CAL KING (72ï¿½84ï¿½15)"
                   />
                 </div>
                 <div>
